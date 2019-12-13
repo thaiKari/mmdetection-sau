@@ -105,6 +105,8 @@ class BBoxHead(nn.Module):
              bbox_weights,
              reduction_override=None):
         losses = dict()
+
+        
         if cls_score is not None:
             avg_factor = max(torch.sum(label_weights > 0).float().item(), 1.)
             losses['loss_cls'] = self.loss_cls(

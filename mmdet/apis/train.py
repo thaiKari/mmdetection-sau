@@ -55,8 +55,10 @@ def train_detector(model,
 
     # start training
     if distributed:
+        print('distributed')
         _dist_train(model, dataset, cfg, validate=validate)
     else:
+        print('_non_dist_train')
         _non_dist_train(model, dataset, cfg, validate=validate)
 
 

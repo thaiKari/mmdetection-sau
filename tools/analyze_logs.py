@@ -32,6 +32,7 @@ def cal_train_time(log_dicts, args):
 
 
 def plot_curve(log_dicts, args):
+
     if args.backend is not None:
         plt.switch_backend(args.backend)
     sns.set_style(args.style)
@@ -164,6 +165,7 @@ def load_json_logs(json_logs):
 
 def main():
     args = parse_args()
+	
 
     json_logs = args.json_logs
     for json_log in json_logs:
