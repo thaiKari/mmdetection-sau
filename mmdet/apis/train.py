@@ -116,13 +116,6 @@ def train_detector(model,
 
     # start training
     if distributed:
-<<<<<<< HEAD
-        print('distributed')
-        _dist_train(model, dataset, cfg, validate=validate)
-    else:
-        print('_non_dist_train')
-        _non_dist_train(model, dataset, cfg, validate=validate)
-=======
         _dist_train(
             model,
             dataset,
@@ -138,7 +131,6 @@ def train_detector(model,
             validate=validate,
             logger=logger,
             timestamp=timestamp)
->>>>>>> e907139cb8f4c0195abcf31101925819f369ecc1
 
 
 def build_optimizer(model, optimizer_cfg):
