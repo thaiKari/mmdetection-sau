@@ -133,7 +133,7 @@ train_pipeline = [
                         p=0.5),
                     dict(
                         type='Rotate',
-                        limit=45),
+                        limit=359),
                     dict(
                         type='RandomGamma',
                         p=0.2),
