@@ -3,6 +3,7 @@ import os.path as osp
 import mmcv
 import numpy as np
 import pycocotools.mask as maskUtils
+import numpy as np
 
 from ..registry import PIPELINES
 
@@ -19,7 +20,13 @@ class LoadImageFromFile(object):
                                 results['img_info']['filename'])
         else:
             filename = results['img_info']['filename']
-        img = mmcv.imread(filename)
+            
+        #print('FILENAME: ', filename)
+        if '.npy' in filename[-4:]:
+            img = mmcv.imread(np.load(filename))
+        else:
+            img = mmcv.imread(filename)
+        
         if self.to_float32:
             img = img.astype(np.float32)
         results['filename'] = filename

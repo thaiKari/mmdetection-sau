@@ -483,7 +483,7 @@ class PhotoMetricDistortion(object):
                 img *= alpha
 
         # convert color from BGR to HSV
-        img = mmcv.bgr2hsv(img)
+        #img = mmcv.bgr2hsv(img)
 
         # random saturation
         if random.randint(2):
@@ -491,13 +491,13 @@ class PhotoMetricDistortion(object):
                                           self.saturation_upper)
 
         # random hue
-        if random.randint(2):
-            img[..., 0] += random.uniform(-self.hue_delta, self.hue_delta)
-            img[..., 0][img[..., 0] > 360] -= 360
-            img[..., 0][img[..., 0] < 0] += 360
+        #if random.randint(2):
+        #    img[..., 0] += random.uniform(-self.hue_delta, self.hue_delta)
+        #    img[..., 0][img[..., 0] > 360] -= 360
+        #    img[..., 0][img[..., 0] < 0] += 360
 
         # convert color from HSV to BGR
-        img = mmcv.hsv2bgr(img)
+        #img = mmcv.hsv2bgr(img)
 
         # random contrast
         if mode == 0:
@@ -507,8 +507,8 @@ class PhotoMetricDistortion(object):
                 img *= alpha
 
         # randomly swap channels
-        if random.randint(2):
-            img = img[..., random.permutation(3)]
+        #if random.randint(2):
+        #    img = img[..., random.permutation(3)]
 
         results['img'] = img
         return results

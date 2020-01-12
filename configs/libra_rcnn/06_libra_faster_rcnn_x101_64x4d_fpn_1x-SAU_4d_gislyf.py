@@ -123,8 +123,9 @@ data_root = 'data/data_external/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type='LoadImageFromFile',to_float32=True),
     dict(type='LoadAnnotations', with_bbox=True),
+    #dict(type='PhotoMetricDistortion'), # brightnes, contrast, saturation
     dict(type='Resize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Albu', transforms=[
@@ -133,16 +134,7 @@ train_pipeline = [
                         p=0.5),
                     dict(
                         type='Rotate',
-                        limit=45),
-                    dict(
-                        type='RandomGamma',
-                        p=0.5),
-                    dict(
-                        type='RandomContrast',
-                        p=0.5),
-                    dict(
-                        type='RandomBrightness',
-                        p=0.5)
+                        limit=180)
                 ]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
@@ -170,20 +162,20 @@ data = dict(
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'annotations/train2020_4d_crop1024_bgtosheep_1to2.json',
-        img_prefix=data_root + 'Train_201912/',
+        img_prefix=data_root + 'train2020_4d_crop1024/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/Val_201912.json',
-        img_prefix=data_root + 'val2020_4d_crop1024_bgtosheep_1to1/',
+        ann_file=data_root + 'annotations/val2020_4d_crop1024_bgtosheep_1to1.json',
+        img_prefix=data_root + 'val2020_4d_crop1024/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/Val_201912.json',
-        img_prefix=data_root + 'val2020_4d_crop1024_bgtosheep_1to1/',
+        ann_file=data_root + 'annotations/val2020_4d_crop1024_bgtosheep_1to1.json',
+        img_prefix=data_root + 'val2020_4d_crop1024/',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.0005, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -202,10 +194,10 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 8
+total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 work_dir = './work_dirs/libra_faster_rcnn_x101_64x4d_fpn_1x'
-load_from = './models/libra_best.pth' #Pretrained
+load_from = './models/libra_faster_rcnn_x101_64x4d_fpn_1x_2.pth' #Pretrained
 resume_from = None
 workflow = [('train', 1)]
