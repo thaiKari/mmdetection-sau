@@ -11,8 +11,9 @@ from ..registry import PIPELINES
 @PIPELINES.register_module
 class LoadImageFromFile(object):
 
-    def __init__(self, to_float32=False):
+    def __init__(self, to_float32=False, rgb_only=False):
         self.to_float32 = to_float32
+        self.rgb_only = rgb_only
 
     def __call__(self, results):
         if results['img_prefix'] is not None:
@@ -24,11 +25,15 @@ class LoadImageFromFile(object):
         #print('FILENAME: ', filename)
         if '.npy' in filename[-4:]:
             img = mmcv.imread(np.load(filename))
+            if self.rgb_only:
+                img = img[:,:,:3]
+            
         else:
             img = mmcv.imread(filename)
         
         if self.to_float32:
             img = img.astype(np.float32)
+
         results['filename'] = filename
         results['img'] = img
         results['img_shape'] = img.shape

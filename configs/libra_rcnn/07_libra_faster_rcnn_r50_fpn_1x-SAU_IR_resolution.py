@@ -1,12 +1,10 @@
 # model settings
 model = dict(
     type='FasterRCNN',
-    pretrained='open-mmlab://resnext101_64x4d',
+    pretrained='torchvision://resnet50',
     backbone=dict(
-        type='ResNeXt',
-        depth=101,
-        groups=64,
-        base_width=4,
+        type='ResNet',
+        depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -125,7 +123,6 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile',to_float32=True, rgb_only=True),
     dict(type='LoadAnnotations', with_bbox=True),
-    #dict(type='PhotoMetricDistortion'), # brightnes, contrast, saturation
     dict(type='Resize', img_scale=(1024, 1024), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Albu', transforms=[
@@ -145,8 +142,8 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1024, 1024),
-        flip=True,
+        img_scale=(640, 480),
+        flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
             dict(type='RandomFlip'),
@@ -157,25 +154,25 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    imgs_per_gpu=1,
-    workers_per_gpu=1,
+    imgs_per_gpu=2,
+    workers_per_gpu=2,
     train=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/train2020_4d_crop1024_bgtosheep_1to2.json',
-        img_prefix=data_root + 'train2020_4d_crop1024/',
+        ann_file=data_root + 'annotations/train2020_IR_coordinate_system.json',
+        img_prefix=data_root + 'train2020_4d_IR_coordinate_system/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/val2020_4d_crop1024_bgtosheep_1to1.json',
-        img_prefix=data_root + 'val2020_4d_crop1024/',
+        ann_file=data_root + 'annotations/val2020_IR_coordinate_system.json',
+        img_prefix=data_root + 'val2020_4d_IR_coordinate_system/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/val2020_4d_crop1024_bgtosheep_1to1.json',
-        img_prefix=data_root + 'val2020_4d_crop1024/',
+        ann_file=data_root + 'annotations/val2020_IR_coordinate_system.json',
+        img_prefix=data_root + 'val2020_4d_IR_coordinate_system/',
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
 lr_config = dict(
@@ -197,7 +194,7 @@ log_config = dict(
 total_epochs = 12
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/libra_faster_rcnn_x101_64x4d_fpn_1x'
-load_from = './models/libra_faster_rcnn_x101_64x4d_fpn_1x_2.pth' #Pretrained
+work_dir = './work_dirs/libra_faster_rcnn_r50_fpn_1x'
+load_from = './models/libra_faster_rcnn_r50_fpn_1x_2.pth'
 resume_from = None
 workflow = [('train', 1)]
