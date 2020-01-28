@@ -53,12 +53,14 @@ class LoadAnnotations(object):
                  with_label=True,
                  with_mask=False,
                  with_seg=False,
-                 poly2mask=True):
+                 poly2mask=True,
+                 with_grid_mask=False):
         self.with_bbox = with_bbox
         self.with_label = with_label
         self.with_mask = with_mask
         self.with_seg = with_seg
         self.poly2mask = poly2mask
+        self.with_grid_mask = with_grid_mask
 
     def _load_bboxes(self, results):
         ann_info = results['ann_info']
@@ -71,6 +73,11 @@ class LoadAnnotations(object):
         results['bbox_fields'].append('gt_bboxes')
         return results
 
+    def _load_grid_mask(self, results):
+        ann_info = results['ann_info']
+        results['gt_grid_mask'] = ann_info['grid_mask']
+        return results
+        
     def _load_labels(self, results):
         results['gt_labels'] = results['ann_info']['labels']
         return results
@@ -106,6 +113,9 @@ class LoadAnnotations(object):
         results['seg_fields'].append('gt_semantic_seg')
         return results
 
+    
+
+    
     def __call__(self, results):
         if self.with_bbox:
             results = self._load_bboxes(results)
@@ -116,7 +126,11 @@ class LoadAnnotations(object):
         if self.with_mask:
             results = self._load_masks(results)
         if self.with_seg:
-            results = self._load_semantic_seg(results)
+            results = self._load_semantic_seg(results)    
+        if self.with_grid_mask:
+            results = self._load_grid_mask(results)
+        #print('==========')
+        #print('results', results)
         return results
 
     def __repr__(self):

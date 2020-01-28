@@ -10,9 +10,12 @@ from .retina_head import RetinaHead
 from .retina_sepbn_head import RetinaSepBNHead
 from .rpn_head import RPNHead
 from .ssd_head import SSDHead
+from .grid_head_sheep import GridHeadSheep
+from .fixed_grid_sheep_head import FixedGridSheepHead
+from .fixed_grid_sheep_head_2 import FixedGridSheepHead2
 
 __all__ = [
     'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption', 'RPNHead',
     'GARPNHead', 'RetinaHead', 'RetinaSepBNHead', 'GARetinaHead', 'SSDHead',
-    'FCOSHead', 'RepPointsHead', 'FoveaHead', 'FreeAnchorRetinaHead'
+    'FCOSHead', 'RepPointsHead', 'FoveaHead', 'FreeAnchorRetinaHead','GridHeadSheep','FixedGridSheepHead','FixedGridSheepHead2'
 ]

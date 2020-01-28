@@ -14,6 +14,8 @@ from mmdet.apis import get_root_logger, set_random_seed, train_detector
 from mmdet.datasets import build_dataset
 from mmdet.models import build_detector
 
+checkpoint_path = ''
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')

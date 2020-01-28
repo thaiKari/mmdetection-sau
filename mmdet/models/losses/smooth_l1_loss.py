@@ -42,4 +42,6 @@ class SmoothL1Loss(nn.Module):
             reduction=reduction,
             avg_factor=avg_factor,
             **kwargs)
+        print('=========HERE Yo Go======')
+        print(loss_bbox)
         return loss_bbox
