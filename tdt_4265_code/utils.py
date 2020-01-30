@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import os
+import json
 
 def to_cuda(elements):
     """
@@ -103,7 +104,12 @@ def read_grid_labels(file_path):
 
     return result
 
-
+def read_coco_annotations(file_path):
+    print('sup')
+    with open(file_path) as json_file:
+        data = json.load(json_file)
+        
+    return data
 
 def show_im_with_grid_labels(im, grid, grid_shape, grid_gt=None):
     print('show_im_with_grid_labels',im.shape, grid.shape, grid_shape )

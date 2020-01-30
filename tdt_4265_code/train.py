@@ -40,7 +40,11 @@ class Trainer:
         # Since we are doing multi-class classification, we use the CrossEntropyLoss
         self.loss_criterion = nn.MultiLabelSoftMarginLoss()#cross_entropy_cifar_loss # # # nn.CrossEntropyLoss()
         # Initialize the mode
-        self.model = ResNet(image_channels=4, num_classes=9)
+        if self.visOnly:
+            image_channels = 3
+        else:
+            image_channels = 4
+        self.model = ResNet(image_channels=image_channels, num_classes=9)
         # Transfer model to GPU VRAM, if possible.
         self.model = to_cuda(self.model)
 
