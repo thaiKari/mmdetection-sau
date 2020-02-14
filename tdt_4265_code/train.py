@@ -9,22 +9,26 @@ from resnet import ResNet
 from loss_functions import cross_entropy_cifar_loss
 from pathlib import Path
 from datetime import datetime
+import time
+import numpy as np
 
 
 class Trainer:
 
-    def __init__(self):
+    def __init__(self, which_gpu, img_type, batch_size, learning_rate, start_from, include_msx, epochs,  early_stop_count):
         """
         Initialize our trainer class.
         Set hyperparameters, architecture, tracking variables etc.
         """
         # Define hyperparameters
-        self.epochs = 20
-        self.batch_size = 3
-        self.learning_rate = 5e-5
-        self.early_stop_count = 8
-        self.visOnly = False
-        self.checkpoint_path =  'Work_dirs/work_dirs_external/' + datetime.now().strftime("%Y%m%d_%H%M")
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.early_stop_count = early_stop_count
+        self.img_type=img_type
+        self.include_msx = include_msx
+        self.checkpoint_path =   'Work_dirs/work_dirs_external/' + self.img_type + '/' + datetime.now().strftime("%Y%m%d_%H%M")
+        self.which_gpu = which_gpu
         
         # Make log folder and files
         Path(self.checkpoint_path).mkdir(parents=True, exist_ok=True)
@@ -33,6 +37,15 @@ class Trainer:
 
         with open(os.path.join(self.checkpoint_path,"VALIDATION_LOSS.txt"), "w") as file:
             file.write("")
+            
+        with open(os.path.join(self.checkpoint_path,"META.txt"), "w") as file:
+            file.write( ("num_epochs = " + str(self.epochs) + "\n" +
+                          "batch_size  = " + str(self.batch_size) +"\n" + 
+                        "learning_rate  = " + str(self.learning_rate) +"\n" +
+                         "early_stop_count  = " + str(self.early_stop_count) +"\n" +                         
+                        "img_type  = " + str(self.img_type) +"\n" )  +
+                       "include_msx  = " + str(self.include_msx) +"\n" 
+                      )
 
         
 
@@ -40,23 +53,33 @@ class Trainer:
         # Since we are doing multi-class classification, we use the CrossEntropyLoss
         self.loss_criterion = nn.MultiLabelSoftMarginLoss()#cross_entropy_cifar_loss # # # nn.CrossEntropyLoss()
         # Initialize the mode
-        if self.visOnly:
-            image_channels = 3
-        else:
-            image_channels = 4
-        self.model = ResNet(image_channels=image_channels, num_classes=9)
+        self.model = ResNet(image_channels=3, num_classes=9)
+        
         # Transfer model to GPU VRAM, if possible.
-        self.model = to_cuda(self.model)
-
-        # Define our optimizer. SGD = Stochastich Gradient Descent
-        #self.optimizer = torch.optim.SGD(self.model.parameters(),
-        #                                 self.learning_rate)
+        self.model = to_cuda(self.model, self.which_gpu)
+        
+        if start_from:
+            self.model.load_state_dict(torch.load(start_from)['state_dict'])
 
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                          self.learning_rate)
         
+
+        
         # Load our dataset
-        self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size, visOnly = self.visOnly) #load_cifar10(self.batch_size) #
+        labels_val_path = 'annotations/val2020_simple.json'
+        labels_train_path = 'annotations/train2020_simple.json'
+        
+        if self.include_msx:
+            labels_val_path = 'annotations/val_labels_infrared_and_msx_simple.json'
+            labels_train_path =  'annotations/train_labels_infrared_and_msx_simple.json'
+            
+            
+        self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size,
+                                                                          img_type=self.img_type,
+                                                                          include_msx=self.include_msx,
+                                                                         labels_val_path=labels_val_path,
+                                                                         labels_train_path=labels_train_path) 
 
         self.validation_check = len(self.dataloader_train) // 2
 
@@ -76,14 +99,14 @@ class Trainer:
 
         # Compute for training set
         train_loss = compute_loss_and_accuracy(
-            self.dataloader_train, self.model, self.loss_criterion
+            self.dataloader_train, self.model, self.loss_criterion, which_gpu=self.which_gpu
         )
         #self.TRAIN_ACC.append(train_acc)
         self.TRAIN_LOSS.append(train_loss)
 
         # Compute for validation set
         validation_loss= compute_loss_and_accuracy(
-            self.dataloader_val, self.model, self.loss_criterion
+            self.dataloader_val, self.model, self.loss_criterion, which_gpu=self.which_gpu
         )
         #self.VALIDATION_ACC.append(validation_acc)
         
@@ -131,17 +154,20 @@ class Trainer:
         """
         Trains the model for [self.epochs] epochs.
         """
+        start = time.time()
         # Track initial loss/accuracy
         self.validation_epoch(-1)
         for epoch in range(self.epochs):
             print('Epoch [{}/{}]'.format(epoch, self.epochs))
             # Perform a full pass through all the training samples
-            for batch_it, (X_batch, Y_batch, _) in enumerate(self.dataloader_train):
-                # X_batch is the CIFAR10 images. Shape: [batch_size, 3, 32, 32]
-                # Y_batch is the CIFAR10 image label. Shape: [batch_size]
+            for batch_it, sample in enumerate(self.dataloader_train):
+
                 # Transfer images / labels to GPU VRAM, if possible
-                X_batch = to_cuda(X_batch)
-                Y_batch = to_cuda(Y_batch)
+                X_batch = sample['image']
+                Y_batch = sample['grid']
+                
+                X_batch = to_cuda(X_batch, self.which_gpu)
+                Y_batch = to_cuda(Y_batch, self.which_gpu)
 
                 # Perform the forward pass
                 predictions = self.model(X_batch)
@@ -163,12 +189,67 @@ class Trainer:
                     # Check early stopping criteria.
                     if self.should_early_stop():
                         print("Early stopping.")
+                        end = time.time()
+        
+                        with open(os.path.join(self.checkpoint_path,"META.txt"), "a") as file:
+                            file.write( "start = " + str(start) + "\n" +
+                                          "end  = " + str(end) +"\n" + 
+                                        "time seconds = " + str(end - start) +"\n" +
+                                         "early_stopped = " + 'True' +"\n" +
+                                         'best_val_loss= ' + str(np.min(self.VALIDATION_LOSS)) +"\n" +
+                                         'best_train_loss= ' + str(np.min(self.TRAIN_LOSS)) +"\n"
+                                        )
                         return
+                    
+        end = time.time()
+        
+        with open(os.path.join(self.checkpoint_path,"META.txt"), "a") as file:
+            file.write( "start = " + str(start) + "\n" +
+                          "end  = " + str(end) +"\n" + 
+                        "time seconds = " + str(end - start) +"\n" +
+                         "early_stopped = " + 'False' +"\n"+
+                         'best_val_loss= ' + str(np.min(self.VALIDATION_LOSS)) +"\n" +
+                         'best_train_loss= ' + str(np.min(self.TRAIN_LOSS)) +"\n"
+                      )
+import argparse
 
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+        
 
 if __name__ == "__main__":
-    trainer = Trainer()
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gpu", default=0, type=int, help="Which gpu to run training on")
+    parser.add_argument("--img_type", default='rgb', type=str, help="rgb or infrared")
+    parser.add_argument("--batch_size", default=12, type=int, help="number of images in a batch")
+    parser.add_argument("--learning_rate", default='5e-5', type=str, help="the learning rate")
+    parser.add_argument("--start_from", default=None, type=str, help="load weights from checkpoint at this file location")
+    parser.add_argument("--epochs", default=200, type=int, help="number of epochs to train")
+    parser.add_argument("--early_stop_count", default=8, type=int, help="stop training if no improvement after n epochs") 
+            
+    parser.add_argument("--include_msx", default=False, type=str2bool, help="should training include msx images")
+    args = parser.parse_args()
+
+
+    trainer = Trainer(which_gpu=args.gpu, img_type=args.img_type, batch_size= args.batch_size, learning_rate= float(args.learning_rate), start_from=args.start_from, include_msx=args.include_msx, epochs=args.epochs,  early_stop_count = args.early_stop_count)
+    
+
     trainer.train()
+    
+    
+    
+    
+
 
     os.makedirs("plots", exist_ok=True)
     # Save plots and show them

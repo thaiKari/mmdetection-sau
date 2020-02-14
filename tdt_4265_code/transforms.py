@@ -1,48 +1,60 @@
-class Rescale(object):
-    """Rescale the image in a sample to a given size.
+from albumentations import (
+    BboxParams,
+    HorizontalFlip,
+    VerticalFlip,
+    Resize,
+    CenterCrop,
+    RandomCrop,
+    Crop,
+    Compose,
+    Rotate,
+    ReplayCompose,
+    Normalize,
+    OneOf,
+    RandomContrast,
+    RandomGamma,
+    RandomBrightness,
+    RandomSizedCrop
+)
 
-    Args:
-        output_size (tuple or int): Desired output size. If tuple, output is
-            matched to output_size. If int, smaller of image edges is matched
-            to output_size keeping aspect ratio the same.
-    """
+def get_aug(aug, min_area=0., min_visibility=0.):
+    return ReplayCompose(aug, bbox_params=BboxParams(format='coco', min_area=min_area, 
+                                               min_visibility=min_visibility, label_fields=['category_id']))
 
-    def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
-        self.output_size = output_size
-
-    def __call__(self, sample):
-        image, label, key = sample
-
-        h, w = image.shape[:2]
-        if isinstance(self.output_size, int):
-            if h > w:
-                new_h, new_w = self.output_size * h / w, self.output_size
-            else:
-                new_h, new_w = self.output_size, self.output_size * w / h
-        else:
-            new_h, new_w = self.output_size
-
-        new_h, new_w = int(new_h), int(new_w)
-
-        img = transform.resize(image, (new_h, new_w))
-
-        # h and w are swapped for landmarks because for images,
-        # x and y axes are axis 1 and 0 respectively
-        landmarks = landmarks * [new_w / w, new_h / h]
-
-        return {'image': img, 'landmarks': landmarks}
-    
+#Augmentations applied to both rgb and ir images
+def common_augmentations(crop_shape = (1200, 1200) ):
+     return get_aug([VerticalFlip(p=0.5),
+                        HorizontalFlip(p=0.5),
+                        Rotate(p=0.5,
+                               limit=360),
+                        RandomSizedCrop((1000,1400), *crop_shape), #Crop a random part of the input (cropsize: (800 to 1600)) and rescale it to (1200, 1200). 
+                       ])
 
     
-class ToTensor(object):
-    """Convert ndarrays in sample to Tensors."""
+def rgb_augmentations_bare_bones(resize_shape=(1280,1280)):
+    return  get_aug([Resize(*resize_shape ),
+                     Normalize()
+                     ])
 
-    def __call__(self, sample):
-        image, label, key = sample
+    
 
-        # swap color axis because
-        # numpy image: H x W x C
-        # torch image: C X H X W
-        image = image.transpose((2, 0, 1))
-        return image, label, key
+
+def rgb_augmentations(resize_shape=(1280,1280)):
+    return  get_aug([Resize(*resize_shape ),
+                     OneOf(
+                        [
+                            # apply one of transforms to 50% of images
+                            RandomContrast(), # apply random contrast
+                            RandomGamma(), # apply random gamma
+                            RandomBrightness(), # apply random brightness
+                        ],
+                        p = 0.5),
+                     Normalize()
+                     ])
+
+
+def infrared_augmentations(resize_shape=(160,160)):
+    return  get_aug([Resize(*resize_shape),
+                     Normalize(mean= (0.2, 0.2, 0.2)),                     
+                     ])
+
