@@ -131,8 +131,9 @@ def load_sheep_grid_multiband(batch_size,
     
     
     dataloader_train = torch.utils.data.DataLoader(data_train, batch_size=batch_size,
-                        shuffle=not test_mode, num_workers=2)
+                        shuffle=(not test_mode), num_workers=2)
     
+
     return dataloader_train, dataloader_val    
    
     

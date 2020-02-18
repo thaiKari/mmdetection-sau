@@ -9,25 +9,48 @@ from resnet import ResNetEnsembleInfraredRGB, ResNet
 from loss_functions import cross_entropy_cifar_loss
 from pathlib import Path
 from datetime import datetime
+import time
+import numpy as np
 
 
 class Trainer:
 
-    def __init__(self, which_gpu, img_type, batch_size, learning_rate, start_from):
+    def __init__(self,
+                 which_gpu,
+                 img_type,
+                 batch_size,
+                 learning_rate,
+                 start_from,
+                 epochs,
+                 early_stop_count):
         """
         Initialize our trainer class.
         Set hyperparameters, architecture, tracking variables etc.
         """
         # Define hyperparameters
-        self.epochs = 100
+        self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        self.early_stop_count = 8
-        self.visOnly = False
+        self.early_stop_count = early_stop_count
+        #self.visOnly = False
         #self.img_type='infrared'
         self.img_type=img_type
         self.checkpoint_path =  'Work_dirs/work_dirs_external/ensemble/' + datetime.now().strftime("%Y%m%d_%H%M")
         self.which_gpu = which_gpu
+        
+        
+        time_stamp_rgb = '20200217_0108'
+        state_file_rgb = '/model_best.pth.tar'
+        model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
+        model_rgb = ResNet(image_channels=3, num_classes=9)
+        model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
+
+        time_stamp_infrared = '20200217_0109'
+        state_file_infrared = '/model_best.pth.tar'
+        model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
+        model_infrared = ResNet(image_channels=3, num_classes=9)
+        model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
+        
         
         # Make log folder and files
         Path(self.checkpoint_path).mkdir(parents=True, exist_ok=True)
@@ -38,10 +61,14 @@ class Trainer:
             file.write("")
             
         with open(os.path.join(self.checkpoint_path,"META.txt"), "w") as file:
-            file.write( ("num_epochs = " + str(self.epochs) + "\n" +
+            file.write( "num_epochs = " + str(self.epochs) + "\n" +
                           "batch_size  = " + str(self.batch_size) +"\n" + 
                         "learning_rate  = " + str(self.learning_rate) +"\n" +
-                        "img_type  = " + str(self.img_type) +"\n" ) )
+                        "img_type  = " + str(self.img_type) +"\n" +
+                        "time_stamp_rgb = " + str(time_stamp_rgb) + "\n" +
+                        "state_file_rgb = " + str(state_file_rgb) + "\n" +
+                        "time_stamp_infrared = " + str(time_stamp_infrared) + "\n" +
+                        "state_file_infrared = " + str(state_file_infrared) + "\n")
 
         
 
@@ -50,15 +77,7 @@ class Trainer:
         self.loss_criterion = nn.MultiLabelSoftMarginLoss()#cross_entropy_cifar_loss # # # nn.CrossEntropyLoss()
         # Initialize the mode
         
-        time_stamp_rgb = '20200210_1738'
-        model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb +'/model_best.pth.tar'
-        model_rgb = ResNet(image_channels=3, num_classes=9)
-        model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
-        time_stamp_infrared = '20200210_1738'
-        model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  +'/model_best.pth.tar'
-        model_infrared = ResNet(image_channels=3, num_classes=9)
-        model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
         
         
         self.model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared)
@@ -148,6 +167,7 @@ class Trainer:
         """
         Trains the model for [self.epochs] epochs.
         """
+        start = time.time()
         # Track initial loss/accuracy
         self.validation_epoch(-1)
         for epoch in range(self.epochs):
@@ -184,7 +204,28 @@ class Trainer:
                     # Check early stopping criteria.
                     if self.should_early_stop():
                         print("Early stopping.")
+                        end = time.time()
+        
+                        with open(os.path.join(self.checkpoint_path,"META.txt"), "a") as file:
+                            file.write( "start = " + str(start) + "\n" +
+                                          "end  = " + str(end) +"\n" + 
+                                        "time seconds = " + str(end - start) +"\n" +
+                                         "early_stopped = " + 'True' +"\n" +
+                                         'best_val_loss= ' + str(np.min(self.VALIDATION_LOSS)) +"\n" +
+                                         'best_train_loss= ' + str(np.min(self.TRAIN_LOSS)) +"\n"
+                                        )
                         return
+                    
+        end = time.time()
+        
+        with open(os.path.join(self.checkpoint_path,"META.txt"), "a") as file:
+            file.write( "start = " + str(start) + "\n" +
+                          "end  = " + str(end) +"\n" + 
+                        "time seconds = " + str(end - start) +"\n" +
+                         "early_stopped = " + 'False' +"\n"+
+                         'best_val_loss= ' + str(np.min(self.VALIDATION_LOSS)) +"\n" +
+                         'best_train_loss= ' + str(np.min(self.TRAIN_LOSS)) +"\n"
+                      )
 import argparse
 
 
@@ -199,9 +240,18 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=12, type=int, help="number of images in a batch")
     parser.add_argument("--learning_rate", default=5e-5, type=float, help="the learning rate")
     parser.add_argument("--start_from", default=None, type=str, help="load weights from checkpoint at this file location")
-    args = parser.parse_args()
+    parser.add_argument("--epochs", default=200, type=int, help="number of epochs to train")
+    parser.add_argument("--early_stop_count", default=8, type=int, help="stop training if no improvement after n epochs") 
 
-    trainer = Trainer(which_gpu=args.gpu, img_type=args.img_type, batch_size= args.batch_size, learning_rate= args.learning_rate, start_from=args.start_from)
+    args = parser.parse_args()
+    
+    trainer = Trainer(which_gpu=args.gpu,
+                      img_type=args.img_type,
+                      batch_size= args.batch_size,
+                      learning_rate= args.learning_rate,
+                      start_from=args.start_from,
+                      epochs=args.epochs,
+                      early_stop_count = args.early_stop_count)
     trainer.train()
 
     os.makedirs("plots", exist_ok=True)

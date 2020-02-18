@@ -6,7 +6,8 @@ class ResNet(nn.Module):
 
     def __init__(self,
                  image_channels,
-                 num_classes):
+                 num_classes,
+                train_layer2 = False):
         """
             Is called when model is initialized.
             Args:
@@ -32,9 +33,11 @@ class ResNet(nn.Module):
         for param in self.model.layer4.parameters(): # Unfreeze the last 5 convolutional
             param.requires_grad = True
         for param in self.model.layer3.parameters(): 
-            param.requires_grad = True # layers
-        #for param in self.model.layer2.parameters(): 
-        #    param.requires_grad = True # layers
+            param.requires_grad = True 
+        
+        if train_layer2:
+            for param in self.model.layer2.parameters(): 
+                param.requires_grad = True 
         
         
         

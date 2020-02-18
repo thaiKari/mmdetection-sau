@@ -15,7 +15,16 @@ import numpy as np
 
 class Trainer:
 
-    def __init__(self, which_gpu, img_type, batch_size, learning_rate, start_from, include_msx, epochs,  early_stop_count):
+    def __init__(self,
+                 which_gpu,
+                 img_type,
+                 batch_size,
+                 learning_rate,
+                 start_from,
+                 include_msx,
+                 epochs,
+                 early_stop_count,
+                 train_layer2):
         """
         Initialize our trainer class.
         Set hyperparameters, architecture, tracking variables etc.
@@ -44,7 +53,9 @@ class Trainer:
                         "learning_rate  = " + str(self.learning_rate) +"\n" +
                          "early_stop_count  = " + str(self.early_stop_count) +"\n" +                         
                         "img_type  = " + str(self.img_type) +"\n" )  +
-                       "include_msx  = " + str(self.include_msx) +"\n" 
+                       "include_msx  = " + str(self.include_msx) +"\n" +
+                       "train_layer2  = " + str(train_layer2) +"\n" +
+                       "which_gpu  = " + str(which_gpu) +"\n"
                       )
 
         
@@ -53,7 +64,7 @@ class Trainer:
         # Since we are doing multi-class classification, we use the CrossEntropyLoss
         self.loss_criterion = nn.MultiLabelSoftMarginLoss()#cross_entropy_cifar_loss # # # nn.CrossEntropyLoss()
         # Initialize the mode
-        self.model = ResNet(image_channels=3, num_classes=9)
+        self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)
         
         # Transfer model to GPU VRAM, if possible.
         self.model = to_cuda(self.model, self.which_gpu)
@@ -236,12 +247,21 @@ if __name__ == "__main__":
     parser.add_argument("--start_from", default=None, type=str, help="load weights from checkpoint at this file location")
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs to train")
     parser.add_argument("--early_stop_count", default=8, type=int, help="stop training if no improvement after n epochs") 
-            
     parser.add_argument("--include_msx", default=False, type=str2bool, help="should training include msx images")
+    parser.add_argument("--train_layer2", default=False, type=str2bool, help="should also unfreeze layer2 of ResNet") 
     args = parser.parse_args()
 
 
-    trainer = Trainer(which_gpu=args.gpu, img_type=args.img_type, batch_size= args.batch_size, learning_rate= float(args.learning_rate), start_from=args.start_from, include_msx=args.include_msx, epochs=args.epochs,  early_stop_count = args.early_stop_count)
+    trainer = Trainer(which_gpu=args.gpu,
+                      img_type=args.img_type,
+                      batch_size= args.batch_size,
+                      learning_rate= float(args.learning_rate),
+                      start_from=args.start_from,
+                      include_msx=args.include_msx,
+                      epochs=args.epochs,
+                      early_stop_count = args.early_stop_count,
+                      train_layer2 = args.train_layer2
+                     )
     
 
     trainer.train()
