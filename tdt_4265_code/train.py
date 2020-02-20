@@ -3,9 +3,9 @@ import os
 import matplotlib.pyplot as plt
 import torch
 from torch import nn
-from dataloaders import load_cifar10, load_sheep_grid_data
+from dataloaders import load_sheep_grid_multiband, load_sheep_grid_data
 from utils import to_cuda, compute_loss_and_accuracy, save_checkpoint
-from resnet import ResNet
+from resnet import ResNet, ResNetEnsembleInfraredRGB
 from loss_functions import cross_entropy_cifar_loss
 from pathlib import Path
 from datetime import datetime
@@ -39,6 +39,22 @@ class Trainer:
         self.checkpoint_path =   'Work_dirs/work_dirs_external/' + self.img_type + '/' + datetime.now().strftime("%Y%m%d_%H%M")
         self.which_gpu = which_gpu
         
+        #Extra ensemble parameters
+        if img_type == 'ensemble':
+            time_stamp_rgb = '20200218_1940'
+            state_file_rgb = '/model_best.pth.tar'
+            model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
+            model_rgb = ResNet(image_channels=3, num_classes=9)
+            model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
+
+            time_stamp_infrared = '20200218_1929'
+            state_file_infrared = '/model_best.pth.tar'
+            model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
+            model_infrared = ResNet(image_channels=3, num_classes=9)
+            model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
+        
+        
+        
         # Make log folder and files
         Path(self.checkpoint_path).mkdir(parents=True, exist_ok=True)
         with open(os.path.join(self.checkpoint_path,"TRAIN_LOSS.txt"), "w") as file:
@@ -48,34 +64,46 @@ class Trainer:
             file.write("")
             
         with open(os.path.join(self.checkpoint_path,"META.txt"), "w") as file:
-            file.write( ("num_epochs = " + str(self.epochs) + "\n" +
-                          "batch_size  = " + str(self.batch_size) +"\n" + 
-                        "learning_rate  = " + str(self.learning_rate) +"\n" +
-                         "early_stop_count  = " + str(self.early_stop_count) +"\n" +                         
-                        "img_type  = " + str(self.img_type) +"\n" )  +
-                       "include_msx  = " + str(self.include_msx) +"\n" +
-                       "train_layer2  = " + str(train_layer2) +"\n" +
-                       "which_gpu  = " + str(which_gpu) +"\n"
-                      )
+            s = "num_epochs = " + str(self.epochs) + "\n" 
+            s = s + "batch_size  = " + str(self.batch_size) +"\n" 
+            s = s + "learning_rate  = " + str(self.learning_rate) +"\n" 
+            s = s + "early_stop_count  = " + str(self.early_stop_count) +"\n"                          
+            s = s + "img_type  = " + str(self.img_type) +"\n"   
+            s = s + "include_msx  = " + str(self.include_msx) +"\n" 
+            s = s + "train_layer2  = " + str(train_layer2) +"\n" 
+            s = s + "which_gpu  = " + str(which_gpu) + "\n"
+                      
+            
+            if self.img_type == 'ensemble':
+                s = s + "time_stamp_rgb = " + str(time_stamp_rgb) + "\n"                       
+                s = s + "time_stamp_infrared = " + str(time_stamp_infrared) + "\n" 
+                          
 
+            if start_from:
+                s = s + "start_from = " + str(start_from) + "\n" 
+                
+            file.write(s)
         
 
-
-        # Since we are doing multi-class classification, we use the CrossEntropyLoss
-        self.loss_criterion = nn.MultiLabelSoftMarginLoss()#cross_entropy_cifar_loss # # # nn.CrossEntropyLoss()
-        # Initialize the mode
-        self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)
+        self.loss_criterion = nn.MultiLabelSoftMarginLoss()        
+        
+        
+        # Initialize the model
+        if self.img_type == 'ensemble':
+            self.model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared, train_layer2=train_layer2) 
+        else:            
+            self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)  
         
         # Transfer model to GPU VRAM, if possible.
         self.model = to_cuda(self.model, self.which_gpu)
-        
-        if start_from:
-            self.model.load_state_dict(torch.load(start_from)['state_dict'])
-
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                          self.learning_rate)
         
-
+        if start_from:
+            self.model.load_state_dict(torch.load(start_from)['state_dict'])
+            self.optimizer.load_state_dict(torch.load(start_from)['optimizer_state_dict'])
+            
+        
         
         # Load our dataset
         labels_val_path = 'annotations/val2020_simple.json'
@@ -85,8 +113,10 @@ class Trainer:
             labels_val_path = 'annotations/val_labels_infrared_and_msx_simple.json'
             labels_train_path =  'annotations/train_labels_infrared_and_msx_simple.json'
             
-            
-        self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size,
+        if self.img_type == 'ensemble':
+            self.dataloader_train, self.dataloader_val = load_sheep_grid_multiband(self.batch_size)
+        else:
+            self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size,
                                                                           img_type=self.img_type,
                                                                           include_msx=self.include_msx,
                                                                          labels_val_path=labels_val_path,
@@ -110,14 +140,14 @@ class Trainer:
 
         # Compute for training set
         train_loss = compute_loss_and_accuracy(
-            self.dataloader_train, self.model, self.loss_criterion, which_gpu=self.which_gpu
+            self.dataloader_train, self.model, self.loss_criterion, which_gpu=self.which_gpu, ensemble_learning= self.img_type == 'ensemble'
         )
         #self.TRAIN_ACC.append(train_acc)
         self.TRAIN_LOSS.append(train_loss)
 
         # Compute for validation set
         validation_loss= compute_loss_and_accuracy(
-            self.dataloader_val, self.model, self.loss_criterion, which_gpu=self.which_gpu
+            self.dataloader_val, self.model, self.loss_criterion, which_gpu=self.which_gpu, ensemble_learning= self.img_type == 'ensemble'
         )
         #self.VALIDATION_ACC.append(validation_acc)
         
@@ -131,6 +161,7 @@ class Trainer:
             save_checkpoint({
                 'epoch': epoch + 1,
                 'state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
             }, is_best, checkpoint_path = self.checkpoint_path, filename=os.path.join(self.checkpoint_path, 'epoch_'+str(epoch + 1) +'.pth.tar') )
             
         with open(os.path.join(self.checkpoint_path,"TRAIN_LOSS.txt"), "a") as file:
@@ -172,16 +203,26 @@ class Trainer:
             print('Epoch [{}/{}]'.format(epoch, self.epochs))
             # Perform a full pass through all the training samples
             for batch_it, sample in enumerate(self.dataloader_train):
+                if self.img_type == 'ensemble':
+                    X_batch_rgb = sample['rgb']
+                    X_batch_infrared = sample['infrared']
+                    Y_batch = sample['grid']
 
-                # Transfer images / labels to GPU VRAM, if possible
-                X_batch = sample['image']
-                Y_batch = sample['grid']
+                    X_batch_rgb = to_cuda(X_batch_rgb, self.which_gpu)
+                    X_batch_infrared = to_cuda(X_batch_infrared, self.which_gpu)
+                    Y_batch = to_cuda(Y_batch, self.which_gpu)
+
+                    # Perform the forward pass
+                    predictions = self.model(X_batch_rgb, X_batch_infrared)
+                else:
+                    X_batch = sample['image']
+                    Y_batch = sample['grid']
+
+                    X_batch = to_cuda(X_batch, self.which_gpu)
+                    Y_batch = to_cuda(Y_batch, self.which_gpu)
+
+                    predictions = self.model(X_batch)
                 
-                X_batch = to_cuda(X_batch, self.which_gpu)
-                Y_batch = to_cuda(Y_batch, self.which_gpu)
-
-                # Perform the forward pass
-                predictions = self.model(X_batch)
                 # Compute the cross entropy loss for the batch
                 loss = self.loss_criterion(predictions, Y_batch)
                 #print('loss', loss)
@@ -264,32 +305,8 @@ if __name__ == "__main__":
                      )
     
 
-    trainer.train()
-    
-    
-    
+    trainer.train() 
     
 
 
-    os.makedirs("plots", exist_ok=True)
-    # Save plots and show them
-    plt.figure(figsize=(12, 8))
-    plt.title("Cross Entropy Loss")
-    plt.plot(trainer.VALIDATION_LOSS, label="Validation loss")
-    plt.plot(trainer.TRAIN_LOSS, label="Training loss")
-
-    plt.legend()
-    plt.savefig(os.path.join("plots", "final_loss.png"))
-    plt.show()
-
-    #plt.figure(figsize=(12, 8))
-    #plt.title("Accuracy")
-    #plt.plot(trainer.VALIDATION_ACC, label="Validation Accuracy")
-    #plt.plot(trainer.TRAIN_ACC, label="Training Accuracy")
-
-    #plt.legend()
-    #plt.savefig(os.path.join("plots", "final_accuracy.png"))
-    #plt.show()
-
-
-    print("Final validation loss:", trainer.VALIDATION_LOSS[-trainer.early_stop_count])
+    print("Best validation loss:", min(trainer.VALIDATION_LOSS[-trainer.early_stop_count]))

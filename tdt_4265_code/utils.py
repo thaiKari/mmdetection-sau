@@ -110,13 +110,7 @@ def save_checkpoint(state, is_best, checkpoint_path='./', filename='checkpoint.p
         shutil.copyfile(filename, os.path.join(checkpoint_path, 'model_best.pth.tar'))
         
         
-def save_model(model, is_best, checkpoint_path='./', filename='checkpoint.pth.tar'):
-    #Only save checkpoint if new best
-    if is_best:
-        torch.save(model, filename)
-        print('saving model')
-        print('new best!')
-        shutil.copyfile(filename, os.path.join(checkpoint_path, 'model_best.pth'))
+
         
 '''
 LOAD:

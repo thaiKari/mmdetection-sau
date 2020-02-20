@@ -22,7 +22,8 @@ class Trainer:
                  learning_rate,
                  start_from,
                  epochs,
-                 early_stop_count):
+                 early_stop_count,
+                train_layer2):
         """
         Initialize our trainer class.
         Set hyperparameters, architecture, tracking variables etc.
@@ -39,13 +40,13 @@ class Trainer:
         self.which_gpu = which_gpu
         
         
-        time_stamp_rgb = '20200217_0108'
+        time_stamp_rgb = '20200218_1940'
         state_file_rgb = '/model_best.pth.tar'
         model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
         model_rgb = ResNet(image_channels=3, num_classes=9)
         model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
-        time_stamp_infrared = '20200217_0109'
+        time_stamp_infrared = '20200218_1929'
         state_file_infrared = '/model_best.pth.tar'
         model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
         model_infrared = ResNet(image_channels=3, num_classes=9)
@@ -68,7 +69,9 @@ class Trainer:
                         "time_stamp_rgb = " + str(time_stamp_rgb) + "\n" +
                         "state_file_rgb = " + str(state_file_rgb) + "\n" +
                         "time_stamp_infrared = " + str(time_stamp_infrared) + "\n" +
-                        "state_file_infrared = " + str(state_file_infrared) + "\n")
+                        "state_file_infrared = " + str(state_file_infrared) + "\n"+
+                      "train_layer2  = " + str(train_layer2) +"\n" +
+                       "which_gpu  = " + str(which_gpu) +"\n")
 
         
 
@@ -80,7 +83,7 @@ class Trainer:
 
         
         
-        self.model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared)
+        self.model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared, train_layer2=train_layer2)
         
         # Transfer model to GPU VRAM, if possible.
         self.model = to_cuda(self.model, self.which_gpu)
@@ -228,7 +231,15 @@ class Trainer:
                       )
 import argparse
 
-
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
                     
 
@@ -242,6 +253,7 @@ if __name__ == "__main__":
     parser.add_argument("--start_from", default=None, type=str, help="load weights from checkpoint at this file location")
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs to train")
     parser.add_argument("--early_stop_count", default=8, type=int, help="stop training if no improvement after n epochs") 
+    parser.add_argument("--train_layer2", default=False, type=str2bool, help="should also unfreeze layer2 of ResNet") 
 
     args = parser.parse_args()
     
@@ -251,7 +263,8 @@ if __name__ == "__main__":
                       learning_rate= args.learning_rate,
                       start_from=args.start_from,
                       epochs=args.epochs,
-                      early_stop_count = args.early_stop_count)
+                      early_stop_count = args.early_stop_count,
+                      train_layer2 = args.train_layer2)
     trainer.train()
 
     os.makedirs("plots", exist_ok=True)

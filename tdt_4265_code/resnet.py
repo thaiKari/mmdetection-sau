@@ -50,7 +50,7 @@ class ResNet(nn.Module):
     
 class ResNetEnsembleInfraredRGB(nn.Module):
 
-    def __init__(self, num_classes, ResNetRGB, ResNetIR):
+    def __init__(self, num_classes, ResNetRGB, ResNetIR, train_layer2 = False):
 
         super().__init__()
 
@@ -67,7 +67,9 @@ class ResNetEnsembleInfraredRGB(nn.Module):
         for param in ResNetRGB.model.layer3.parameters():
             param.requires_grad = True
 
-        
+        if train_layer2:
+            for param in ResNetRGB.model.layer2.parameters(): 
+                param.requires_grad = True
         
         for param in ResNetIR.parameters(): # Freeze all parameters
             param.requires_grad = False  
@@ -75,6 +77,10 @@ class ResNetEnsembleInfraredRGB(nn.Module):
         
         for param in ResNetIR.model.layer3.parameters():
             param.requires_grad = True
+            
+        if train_layer2:
+            for param in ResNetIR.model.layer2.parameters(): 
+                param.requires_grad = True
 
         
         self.rgb_base = nn.Sequential(
