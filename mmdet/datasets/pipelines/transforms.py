@@ -10,6 +10,136 @@ from numpy import random
 from mmdet.core.evaluation.bbox_overlaps import bbox_overlaps
 from ..registry import PIPELINES
 
+from albumentations import (
+    BboxParams,
+    HorizontalFlip,
+    VerticalFlip,
+    RandomCrop,
+    Crop,
+    Compose,
+    Rotate,
+    ReplayCompose,
+    Normalize,
+    OneOf,
+    RandomContrast,
+    RandomGamma,
+    RandomBrightness,
+    RandomSizedCrop
+)
+
+from albumentations import BboxParams as BboxParamsAlbu
+from albumentations import HorizontalFlip as HorizontalFlipAlbu
+from albumentations import VerticalFlip as VerticalFlipAlbu
+from albumentations import RandomCrop as RandomCropAlbu
+from albumentations import Crop as CropeAlbu
+from albumentations import Compose as ComposeeAlbu
+from albumentations import Rotate as RotateAlbu
+from albumentations import ReplayCompose as ReplayComposeAlbu
+from albumentations import Normalize as NormalizeAlbu
+from albumentations import OneOf as OneOfAlbu
+from albumentations import RandomContrast as RandomContrastAlbu
+from albumentations import RandomGamma as RandomGammaAlbu
+from albumentations import RandomBrightness as RandomBrightnessAlbu
+from albumentations import RandomSizedCrop as RandomSizedCropAlbu
+from albumentations import Resize as ResizeAlbu
+
+@PIPELINES.register_module
+class FusionAugmentations(object):
+    def __init__(self, test=False):
+        self.test = test
+
+    def get_albu_aug(self, aug, min_area=0., min_visibility=0.):
+        return ReplayCompose(aug, bbox_params=BboxParams(format='coco', min_area=min_area, 
+                                                   min_visibility=min_visibility, label_fields=['category_id']))
+
+    #Augmentations applied to both rgb and ir images
+    def common_augmentations(self, crop_shape = (1200, 1200) ):
+         return self.get_albu_aug([VerticalFlipAlbu(p=0.5),
+                            HorizontalFlipAlbu(p=0.5),
+                            RotateAlbu(p=0.5,
+                                   limit=360),
+                            RandomSizedCropAlbu((1000,1400), *crop_shape), #Crop a random part of the input (cropsize: (800 to 1600)) and rescale it to (1200, 1200). 
+                           ])
+
+
+    def rgb_augmentations_bare_bones(self, resize_shape=(1280,1280)):
+        return  self.get_albu_aug([ResizeAlbu(*resize_shape ),
+                         NormalizeAlbu()
+                         ])
+
+
+
+
+    def rgb_augmentations(self, resize_shape=(1280,1280)):
+        return  self.get_albu_aug([ResizeAlbu(*resize_shape ),
+                         OneOf(
+                            [
+                                # apply one of transforms to 50% of images
+                                RandomContrastAlbu(), # apply random contrast
+                                RandomGammaAlbu(), # apply random gamma
+                                RandomBrightnessAlbu(), # apply random brightness
+                            ],
+                            p = 0.5),
+                         NormalizeAlbu()
+                         ])
+
+
+    def infrared_augmentations(self, resize_shape=(160,160)):
+        return  self.get_albu_aug([ResizeAlbu(*resize_shape),
+                         NormalizeAlbu(mean= (0.2, 0.2, 0.2)),                     
+                         ])
+
+    def to_albu_bbox(self, xmin,ymin,xmax,ymax):
+        return [xmin, ymin, xmax-xmin, ymax - ymin]
+    
+    def to_mmdet_bbox(self, xmin,ymin,w,h):
+        return [xmin, ymin, xmin+w, ymin+h]
+    
+    def __call__(self, results):
+        
+        albu_style_bboxes = list(map( lambda box: self.to_albu_bbox(*box), results['gt_bboxes']))
+
+        rgb_sample = {'image': results['img']['rgb'],
+                         'bboxes': albu_style_bboxes,
+                         'category_id': [0]*len(results['gt_bboxes'])}
+        infrared_sample = {'image': results['img']['infrared'],
+                         'bboxes': albu_style_bboxes,
+                         'category_id': [0]*len(results['gt_bboxes'])}
+        
+        if  self.test:
+            transformed_rgb = self.rgb_augmentations_bare_bones()(**rgb_sample)               
+            transformed_infrared = self.infrared_augmentations()(**infrared_sample)
+        
+        else:
+            transformed_rgb = self.common_augmentations()(**rgb_sample)
+            transformed_infrared_im = ReplayCompose.replay(transformed_rgb['replay'], image=infrared_sample['image'])['image']
+            transformed_infrared = transformed_rgb.copy()
+            transformed_infrared['image'] = transformed_infrared_im
+        
+            transformed_rgb = self.rgb_augmentations()(**transformed_rgb)
+            transformed_infrared= self.infrared_augmentations()(**transformed_infrared)
+        
+
+        mmdet_style_bboxes = list(map( lambda box: self.to_mmdet_bbox(*box), transformed_rgb['bboxes']))
+        results['img']['rgb'] = transformed_rgb['image']
+        results['img']['infrared'] = transformed_infrared['image']
+        results['gt_bboxes'] =  mmdet_style_bboxes
+        #results['pad_shape'] = transformed_rgb['image'].shape
+        results['img_shape'] = transformed_rgb['image'].shape
+        results['pad_shape'] = transformed_rgb['image'].shape  # in case that there is no padding
+        #results['scale_factor'] = 1
+        #results['keep_ratio'] = True
+        #results['flip'] = True
+        results['img_norm_cfg']=dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+        
+        print('SHAPE', transformed_rgb['image'].shape)
+        
+        return results
+
+    def __repr__(self):
+        return 'do augmentations on infrared and rgb ims'
+    
 
 @PIPELINES.register_module
 class Resize(object):

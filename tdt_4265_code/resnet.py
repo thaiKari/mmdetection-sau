@@ -46,9 +46,169 @@ class ResNet(nn.Module):
 
         x = self.model(x)
         return x
-    
+
     
 class ResNetEnsembleInfraredRGB(nn.Module):
+
+    def __init__(self,
+                 num_classes,
+                 ResNetRGB,
+                 ResNetIR,
+                 train_layer2 = True,
+                 rgb_size=1280,
+                 infrared_size=160,
+                 fuse_after_layer = 3):
+
+        super().__init__()
+        self.fuse_after_layer = fuse_after_layer
+        self.rgb_size = rgb_size
+        self.infrared_size =infrared_size
+        
+        for param in ResNetRGB.parameters(): # Freeze all parameters
+            param.requires_grad = False  
+        
+        for param in ResNetRGB.model.layer4.parameters():
+            param.requires_grad = True
+        
+        for param in ResNetRGB.model.layer3.parameters():
+            param.requires_grad = True
+
+        if train_layer2:
+            for param in ResNetRGB.model.layer2.parameters(): 
+                param.requires_grad = True
+        
+        for param in ResNetIR.parameters(): # Freeze all parameters
+            param.requires_grad = False  
+        
+        
+        for param in ResNetIR.model.layer3.parameters():
+            param.requires_grad = True
+            
+            
+        for param in ResNetIR.model.layer4.parameters():
+            param.requires_grad = True
+            
+        if train_layer2:
+            for param in ResNetIR.model.layer2.parameters(): 
+                param.requires_grad = True
+
+        
+        self.rgb1 = nn.Sequential(
+            ResNetRGB.model.conv1,
+            ResNetRGB.model.bn1,
+            ResNetRGB.model.relu,
+            ResNetRGB.model.maxpool,
+            ResNetRGB.model.layer1,
+        )
+        
+            
+        self.rgb2 = ResNetRGB.model.layer2        
+        self.rgb3 = ResNetRGB.model.layer3
+        self.rgb4 = ResNetRGB.model.layer4
+        
+        self.infrared1 = nn.Sequential(
+            ResNetIR.model.conv1,
+            ResNetIR.model.bn1,
+            ResNetIR.model.relu,
+            ResNetIR.model.maxpool,
+            ResNetIR.model.layer1,
+        )
+        
+        self.infrared2 = ResNetIR.model.layer2
+        self.infrared3 = ResNetIR.model.layer3
+        self.infrared4 = ResNetIR.model.layer4
+        
+        if int(rgb_size/infrared_size) == 2^3:
+            self.upsample = nn.Sequential( #Double size 3 times
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                        )
+        elif int(rgb_size/infrared_size) == 2^2:
+            self.upsample = nn.Sequential( #Double size twice
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1)
+                                        )
+        elif int(rgb_size/infrared_size) == 2^1:
+            self.upsample = nn.Sequential( #Double once
+                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                        )
+        
+        #After concat of layers from infrared and rgb. do 1x1 conv layer to reduce dimensions.
+        self.dimension_reducer = nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0,bias=False)
+        
+        self.model_Head_rgb = nn.Sequential(                                    
+                                    ResNetRGB.model.avgpool,
+                                    nn.Flatten(),
+                                    ResNetRGB.model.fc 
+                                    )
+        self.model_Head_infrared = nn.Sequential(                                    
+                                    ResNetIR.model.avgpool,
+                                    nn.Flatten(),
+                                    ResNetIR.model.fc 
+                                    )
+
+        self.extra_fc = nn.Linear(in_features=18, out_features=9, bias=True)
+
+
+    
+    def forward ( self , x_rgb, x_infrared): 
+
+        #rgb_base
+        x_rgb = self.rgb1(x_rgb)
+        x_rgb = self.rgb2(x_rgb)
+
+        #infrared_base
+        x_infrared = self.infrared1(x_infrared)
+        x_infrared = self.infrared2(x_infrared)
+        
+        if self.fuse_after_layer == 2:
+            if int(self.rgb_size/self.infrared_size) > 1:
+                x_infrared= self.upsample(x_infrared)
+            x = torch.cat((x_rgb, x_infrared), dim=1)
+            x = self.dimension_reducer(x)
+            x = self.rgb3(x)
+            x = self.rgb4(x)
+            x = self.model_Head_rgb(x)
+            
+            return x
+        
+        x_rgb = self.rgb3(x_rgb)
+        x_infrared = self.infrared3(x_infrared)
+        
+        if  self.fuse_after_layer == 3:
+            if int(self.rgb_size/self.infrared_size) > 1:
+                x_infrared= self.upsample(x_infrared)
+            x = torch.cat((x_rgb, x_infrared), dim=1)
+            x = self.dimension_reducer(x)
+            x = self.rgb4(x)
+            x = self.model_Head_rgb(x)
+            
+            return x
+        
+        x_rgb = self.rgb4(x_rgb)
+        x_infrared = self.infrared4(x_infrared)
+        
+        if  self.fuse_after_layer == 4:
+            if int(self.rgb_size/self.infrared_size) > 1:
+                x_infrared= self.upsample(x_infrared)
+            x = torch.cat((x_rgb, x_infrared), dim=1)
+            x = self.dimension_reducer(x)
+            x = self.model_Head_rgb(x)
+            
+            return x
+        
+        x_rgb = self.model_Head_rgb(x)
+        x_infrared = self.model_Head_infrared(x)
+        
+        x = torch.cat((x_rgb, x_infrared), dim=1)
+        x = self.extra_fc(x)
+        
+        return x
+    
+
+    
+class ResNetEnsembleInfraredRGBOld(nn.Module):
 
     def __init__(self, num_classes, ResNetRGB, ResNetIR, train_layer2 = False):
 

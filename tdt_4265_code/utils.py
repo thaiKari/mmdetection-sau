@@ -390,7 +390,33 @@ def grid_cell_has_label(grid_xmin, grid_ymin, grid_xmax, grid_ymax, labels):
             return True
         
     return False
+'''
+Returns value 0, 1 or -1
+0: No sheep in grid
+1: Sheep in grid
+-1: only small part of sheep in grid. Ignore for training and evaluation
+'''
 
+def calculate_grid_value(grid_xmin, grid_ymin, grid_xmax, grid_ymax, labels):
+
+    grid_geom = [ [grid_xmin, grid_ymin ], [grid_xmax, grid_ymax ] ]
+    
+    has_partial_sheep = False
+    
+    for minx, miny, w, h in labels:
+        label_geom = [[ minx, miny ], [ minx + w, miny + w ]]
+        
+        label_intersection_degree = intersection_degree(label_geom, grid_geom)
+        
+        if label_intersection_degree > 0.2:
+            return 1
+        elif label_intersection_degree > 0:
+            has_partial_sheep = True
+        
+    if has_partial_sheep:
+        return -1 #Ignore this grid when calculating loss and precision recall
+    return 0
+    
 
 def get_grid(bboxes, im_shape, grid_shape):
 
@@ -401,8 +427,8 @@ def get_grid(bboxes, im_shape, grid_shape):
     
     for x in range(grid_shape[1]):
         for y in range(grid_shape[0]):
-            if grid_cell_has_label(x*grid_w, y*grid_h, (x+1)*grid_w,(y+1)*grid_h, bboxes ):
-                grid[y,x] = 1
+            #if grid_cell_has_label(x*grid_w, y*grid_h, (x+1)*grid_w,(y+1)*grid_h, bboxes ):
+            grid[y,x] = calculate_grid_value(x*grid_w, y*grid_h, (x+1)*grid_w,(y+1)*grid_h, bboxes )
     
     return grid.flatten()
 

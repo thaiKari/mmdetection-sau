@@ -22,12 +22,24 @@ from albumentations import ReplayCompose
 
 class SheepGridDataset(Dataset):
     #img_type = rgb or infrared
-    def __init__(self, labels_path, image_path, root_dir, img_type='rgb', crop_shape=(1200,1200), im_shape=(2400,3200), grid_shape=(3,3), include_msx = False, test_mode = False):
+    def __init__(self,
+                 labels_path,
+                 image_path,
+                 root_dir,
+                 img_type='rgb',
+                 crop_shape=(1200,1200),
+                 im_shape=(2400,3200),
+                 grid_shape=(3,3),
+                 include_msx = False,
+                 test_mode = False,
+                 rgb_resize_shape = (1280,1280),
+                 infrared_resize_shape = (160,160)):
 
         if test_mode:
             self.labels = read_coco_annotations_test(os.path.join(root_dir,labels_path), crop_shape=crop_shape, im_shape=im_shape, grid_shape=grid_shape)
         else:    
             self.labels = read_coco_annotations(os.path.join(root_dir,labels_path))
+        
         self.image_path = image_path
         self.root_dir = root_dir
         self.grid_shape = grid_shape
@@ -36,6 +48,8 @@ class SheepGridDataset(Dataset):
         self.include_msx = include_msx
         self.crop_shape = crop_shape
         self.im_shape = im_shape
+        self.rgb_resize_shape = rgb_resize_shape
+        self.infrared_resize_shape = infrared_resize_shape
 
     
     def get_keys(self):
@@ -90,11 +104,11 @@ class SheepGridDataset(Dataset):
         
         if self.img_type == 'rgb':
             if  self.test_mode:
-                sample = rgb_augmentations_bare_bones()(**sample)
+                sample = rgb_augmentations_bare_bones(resize_shape=self.rgb_resize_shape)(**sample)
             else:
-                sample = rgb_augmentations()(**sample)
+                sample = rgb_augmentations(resize_shape=self.rgb_resize_shape)(**sample)
         elif self.img_type == 'infrared':
-            sample = infrared_augmentations()(**sample)
+            sample = infrared_augmentations(resize_shape=self.infrared_resize_shape)(**sample)
             
             
         # CALCULATE GRID VALUES FROM BBOXES
@@ -112,7 +126,15 @@ class SheepGridDataset(Dataset):
     
 class SheepGridDatasetMultiBand(Dataset):
 
-    def __init__(self,root_dir, labels_path, image_path, crop_shape=(1200,1200), im_shape=(2400,3200), grid_shape=(3,3), test_mode=False):
+    def __init__(self,root_dir,
+                 labels_path,
+                 image_path,
+                 crop_shape=(1200,1200),
+                 im_shape=(2400,3200),
+                 grid_shape=(3,3),
+                 test_mode=False,
+                 rgb_resize_shape = (1280,1280),
+                 infrared_resize_shape = (160,160)):
 
         
         if test_mode:
@@ -126,6 +148,8 @@ class SheepGridDatasetMultiBand(Dataset):
         self.test_mode = test_mode
         self.im_shape=im_shape
         self.crop_shape = crop_shape
+        self.rgb_resize_shape = rgb_resize_shape
+        self.infrared_resize_shape = infrared_resize_shape
         
 
     
@@ -180,8 +204,8 @@ class SheepGridDatasetMultiBand(Dataset):
 
         # TRANSFORMS
         if  self.test_mode:
-            transformed_rgb = rgb_augmentations_bare_bones()(**sample['rgb'])   
-            transformed_infrared = infrared_augmentations()(**sample['infrared'])
+            transformed_rgb = rgb_augmentations_bare_bones(resize_shape=self.rgb_resize_shape)(**sample['rgb'])   
+            transformed_infrared = infrared_augmentations(resize_shape=self.infrared_resize_shape)(**sample['infrared'])
             
         
         else:
@@ -190,8 +214,8 @@ class SheepGridDatasetMultiBand(Dataset):
             transformed_infrared = transformed_rgb.copy()
             transformed_infrared['image'] = transformed_infrared_im
         
-            transformed_rgb = rgb_augmentations()(**transformed_rgb)
-            transformed_infrared= infrared_augmentations()(**transformed_infrared)
+            transformed_rgb = rgb_augmentations(resize_shape=self.rgb_resize_shape)(**transformed_rgb)
+            transformed_infrared= infrared_augmentations(resize_shape=self.infrared_resize_shape)(**transformed_infrared)
          
         #print('min', np.min( transformed_infrared['image']), 'max', np.max( transformed_infrared['image']))
         #print('min_rgb', np.min( transformed_rgb['image']), 'max_rgb', np.max( transformed_rgb['image']))

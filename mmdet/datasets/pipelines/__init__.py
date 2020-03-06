@@ -13,5 +13,5 @@ __all__ = [
     'Transpose', 'Collect', 'LoadAnnotations', 'LoadImageFromFile',
     'LoadProposals', 'MultiScaleFlipAug', 'Resize', 'RandomFlip', 'Pad',
     'RandomCrop', 'Normalize', 'SegRescale', 'MinIoURandomCrop', 'Expand',
-    'PhotoMetricDistortion', 'Albu', 'InstaBoost'
+    'PhotoMetricDistortion', 'Albu', 'InstaBoost', 'LoadFusionImageFromFile','FusionAugmentations'
 ]

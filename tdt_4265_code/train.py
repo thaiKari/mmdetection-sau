@@ -6,7 +6,7 @@ from torch import nn
 from dataloaders import load_sheep_grid_multiband, load_sheep_grid_data
 from utils import to_cuda, compute_loss_and_accuracy, save_checkpoint
 from resnet import ResNet, ResNetEnsembleInfraredRGB
-from loss_functions import cross_entropy_cifar_loss
+from loss_functions import cross_entropy_cifar_loss, MultiLabelSoftMarginLossIgnoreEdgeCases
 from pathlib import Path
 from datetime import datetime
 import time
@@ -24,7 +24,10 @@ class Trainer:
                  include_msx,
                  epochs,
                  early_stop_count,
-                 train_layer2):
+                 train_layer2,
+                 rgb_resize_shape,
+                 infrared_resize_shape
+                ):
         """
         Initialize our trainer class.
         Set hyperparameters, architecture, tracking variables etc.
@@ -38,16 +41,18 @@ class Trainer:
         self.include_msx = include_msx
         self.checkpoint_path =   'Work_dirs/work_dirs_external/' + self.img_type + '/' + datetime.now().strftime("%Y%m%d_%H%M")
         self.which_gpu = which_gpu
+        self.rgb_resize_shape = rgb_resize_shape
+        self.infrared_resize_shape = infrared_resize_shape
         
         #Extra ensemble parameters
         if img_type == 'ensemble':
-            time_stamp_rgb = '20200218_1940'
+            time_stamp_rgb = '20200222_0826'
             state_file_rgb = '/model_best.pth.tar'
             model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
             model_rgb = ResNet(image_channels=3, num_classes=9)
             model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
-            time_stamp_infrared = '20200218_1929'
+            time_stamp_infrared = '20200221_1432'
             state_file_infrared = '/model_best.pth.tar'
             model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
             model_infrared = ResNet(image_channels=3, num_classes=9)
@@ -72,6 +77,8 @@ class Trainer:
             s = s + "include_msx  = " + str(self.include_msx) +"\n" 
             s = s + "train_layer2  = " + str(train_layer2) +"\n" 
             s = s + "which_gpu  = " + str(which_gpu) + "\n"
+            s = s + "rgb_resize_shape  = " + str(rgb_resize_shape) + "\n"
+            s = s + "infrared_resize_shape  = " + str(infrared_resize_shape) + "\n"
                       
             
             if self.img_type == 'ensemble':
@@ -85,12 +92,18 @@ class Trainer:
             file.write(s)
         
 
-        self.loss_criterion = nn.MultiLabelSoftMarginLoss()        
+        self.loss_criterion = MultiLabelSoftMarginLossIgnoreEdgeCases      
         
         
         # Initialize the model
         if self.img_type == 'ensemble':
-            self.model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared, train_layer2=train_layer2) 
+            self.model = ResNetEnsembleInfraredRGB(num_classes = 9,
+                                                   ResNetRGB = model_rgb,
+                                                   ResNetIR = model_infrared,
+                                                   train_layer2=train_layer2,
+                                                   rgb_size = self.rgb_resize_shape[0],
+                                                   infrared_size = self.infrared_resize_shape[0]                                           
+                                                  ) 
         else:            
             self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)  
         
@@ -114,13 +127,16 @@ class Trainer:
             labels_train_path =  'annotations/train_labels_infrared_and_msx_simple.json'
             
         if self.img_type == 'ensemble':
-            self.dataloader_train, self.dataloader_val = load_sheep_grid_multiband(self.batch_size)
+            self.dataloader_train, self.dataloader_val = load_sheep_grid_multiband(self.batch_size,
+                                                                              rgb_resize_shape=self.rgb_resize_shape,
+                                                                              infrared_resize_shape=self.infrared_resize_shape)
         else:
             self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size,
                                                                           img_type=self.img_type,
                                                                           include_msx=self.include_msx,
                                                                          labels_val_path=labels_val_path,
-                                                                         labels_train_path=labels_train_path) 
+                                                                         labels_train_path=labels_train_path,                                                                              rgb_resize_shape=self.rgb_resize_shape,                                                                      infrared_resize_shape=self.infrared_resize_shape
+                                                                             ) 
 
         self.validation_check = len(self.dataloader_train) // 2
 
@@ -289,7 +305,9 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", default=200, type=int, help="number of epochs to train")
     parser.add_argument("--early_stop_count", default=8, type=int, help="stop training if no improvement after n epochs") 
     parser.add_argument("--include_msx", default=False, type=str2bool, help="should training include msx images")
-    parser.add_argument("--train_layer2", default=False, type=str2bool, help="should also unfreeze layer2 of ResNet") 
+    parser.add_argument("--train_layer2", default=True, type=str2bool, help="should also unfreeze layer2 of ResNet")
+    parser.add_argument("--rgb_resize_shape", default=1280, type=int, help="size to resize rgb crop to") 
+    parser.add_argument("--infrared_resize_shape", default=160, type=int, help="size to resize infrared crop to") 
     args = parser.parse_args()
 
 
@@ -301,7 +319,9 @@ if __name__ == "__main__":
                       include_msx=args.include_msx,
                       epochs=args.epochs,
                       early_stop_count = args.early_stop_count,
-                      train_layer2 = args.train_layer2
+                      train_layer2 = args.train_layer2,
+                      rgb_resize_shape=(args.rgb_resize_shape, args.rgb_resize_shape),
+                      infrared_resize_shape=(args.infrared_resize_shape, args.infrared_resize_shape)
                      )
     
 
@@ -309,4 +329,4 @@ if __name__ == "__main__":
     
 
 
-    print("Best validation loss:", min(trainer.VALIDATION_LOSS[-trainer.early_stop_count]))
+    print("Best validation loss:", min(trainer.VALIDATION_LOSS))

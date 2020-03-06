@@ -11,22 +11,22 @@ from ..registry import PIPELINES
 @PIPELINES.register_module
 class LoadImageFromFile(object):
 
-    def __init__(self, to_float32=False, rgb_only=False):
+    def __init__(self, to_float32=False, type='rgb'):
         self.to_float32 = to_float32
-        self.rgb_only = rgb_only
 
     def __call__(self, results):
+        print('img_prefix', results['img_prefix'])
+        
         if results['img_prefix'] is not None:
             filename = osp.join(results['img_prefix'],
                                 results['img_info']['filename'])
         else:
             filename = results['img_info']['filename']
             
-        #print('FILENAME: ', filename)
+        
+        
         if '.npy' in filename[-4:]:
             img = mmcv.imread(np.load(filename))
-            if self.rgb_only:
-                img = img[:,:,:3]
             
         else:
             img = mmcv.imread(filename)
@@ -46,6 +46,42 @@ class LoadImageFromFile(object):
 
 
 @PIPELINES.register_module
+class LoadFusionImageFromFile(object):
+
+    def __init__(self, to_float32=False, type='rgb'):
+        self.to_float32 = to_float32
+
+    def __call__(self, results):
+        print('img_prefix', results['img_prefix'])
+        
+
+        filename_infrared = osp.join(results['img_prefix'], 'infrared',
+                            results['img_info']['filename'])
+        filename_rgb = osp.join(results['img_prefix'], 'rgb',
+                            results['img_info']['filename'])
+
+            
+        img_infrared = mmcv.imread(filename_infrared)
+        img_rgb = mmcv.imread(filename_rgb)
+        
+        if self.to_float32:
+            img_rgb = img_rgb.astype(np.float32)
+            img_infrared = img_infrared.astype(np.float32)
+
+        results['filename'] = filename_rgb
+        results['img'] = {'infrared': img_infrared,
+                          'rgb': img_rgb
+                            }
+        results['img_shape'] = img_rgb.shape
+        results['ori_shape'] = img_rgb.shape
+        return results
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(to_float32={})'.format(
+            self.to_float32)
+
+
+@PIPELINES.register_module
 class LoadAnnotations(object):
 
     def __init__(self,
@@ -53,19 +89,20 @@ class LoadAnnotations(object):
                  with_label=True,
                  with_mask=False,
                  with_seg=False,
-                 poly2mask=True,
-                 with_grid_mask=False):
+                 poly2mask=True):
         self.with_bbox = with_bbox
         self.with_label = with_label
         self.with_mask = with_mask
         self.with_seg = with_seg
         self.poly2mask = poly2mask
-        self.with_grid_mask = with_grid_mask
 
     def _load_bboxes(self, results):
         ann_info = results['ann_info']
-        results['gt_bboxes'] = ann_info['bboxes']
-
+        if 'bboxes' in ann_info.keys():
+            results['gt_bboxes'] = ann_info['bboxes']
+        else:
+            results['gt_bboxes'] = ann_info
+            
         gt_bboxes_ignore = ann_info.get('bboxes_ignore', None)
         if gt_bboxes_ignore is not None:
             results['gt_bboxes_ignore'] = gt_bboxes_ignore
@@ -73,13 +110,14 @@ class LoadAnnotations(object):
         results['bbox_fields'].append('gt_bboxes')
         return results
 
-    def _load_grid_mask(self, results):
-        ann_info = results['ann_info']
-        results['gt_grid_mask'] = ann_info['grid_mask']
-        return results
         
     def _load_labels(self, results):
-        results['gt_labels'] = results['ann_info']['labels']
+        if 'labels' in results['ann_info'].keys():
+            results['gt_labels'] = results['ann_info']['labels']
+            
+        else:
+            results['gt_labels'] = [0]*len(results['ann_info'])
+        
         return results
 
     def _poly2mask(self, mask_ann, img_h, img_w):
@@ -127,8 +165,7 @@ class LoadAnnotations(object):
             results = self._load_masks(results)
         if self.with_seg:
             results = self._load_semantic_seg(results)    
-        if self.with_grid_mask:
-            results = self._load_grid_mask(results)
+
         #print('==========')
         #print('results', results)
         return results
