@@ -26,7 +26,9 @@ class Trainer:
                  early_stop_count,
                  train_layer2,
                  rgb_resize_shape,
-                 infrared_resize_shape
+                 infrared_resize_shape,
+                 time_stamp_rgb,
+                 time_stamp_infrared
                 ):
         """
         Initialize our trainer class.
@@ -46,13 +48,11 @@ class Trainer:
         
         #Extra ensemble parameters
         if img_type == 'ensemble':
-            time_stamp_rgb = '20200222_0826'
             state_file_rgb = '/model_best.pth.tar'
             model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
             model_rgb = ResNet(image_channels=3, num_classes=9)
             model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
-            time_stamp_infrared = '20200221_1432'
             state_file_infrared = '/model_best.pth.tar'
             model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
             model_infrared = ResNet(image_channels=3, num_classes=9)
@@ -98,11 +98,11 @@ class Trainer:
         # Initialize the model
         if self.img_type == 'ensemble':
             self.model = ResNetEnsembleInfraredRGB(num_classes = 9,
-                                                   ResNetRGB = model_rgb,
-                                                   ResNetIR = model_infrared,
-                                                   train_layer2=train_layer2,
-                                                   rgb_size = self.rgb_resize_shape[0],
-                                                   infrared_size = self.infrared_resize_shape[0]                                           
+                                           ResNetRGB = model_rgb,
+                                           ResNetIR = model_infrared,
+                                           train_layer2=train_layer2,
+                                           rgb_size = self.rgb_resize_shape[0],
+                                           infrared_size = self.infrared_resize_shape[0]                                           
                                                   ) 
         else:            
             self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)  
@@ -111,6 +111,7 @@ class Trainer:
         self.model = to_cuda(self.model, self.which_gpu)
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                          self.learning_rate)
+        #self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min')
         
         if start_from:
             self.model.load_state_dict(torch.load(start_from)['state_dict'])
@@ -127,15 +128,17 @@ class Trainer:
             labels_train_path =  'annotations/train_labels_infrared_and_msx_simple.json'
             
         if self.img_type == 'ensemble':
-            self.dataloader_train, self.dataloader_val = load_sheep_grid_multiband(self.batch_size,
-                                                                              rgb_resize_shape=self.rgb_resize_shape,
-                                                                              infrared_resize_shape=self.infrared_resize_shape)
+            self.dataloader_train, self.dataloader_val = load_sheep_grid_multiband(self.batch_size, 
+                                                           rgb_resize_shape=self.rgb_resize_shape,
+                                                           infrared_resize_shape=self.infrared_resize_shape)
         else:
-            self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size,
-                                                                          img_type=self.img_type,
-                                                                          include_msx=self.include_msx,
-                                                                         labels_val_path=labels_val_path,
-                                                                         labels_train_path=labels_train_path,                                                                              rgb_resize_shape=self.rgb_resize_shape,                                                                      infrared_resize_shape=self.infrared_resize_shape
+                self.dataloader_train, self.dataloader_val = load_sheep_grid_data(self.batch_size, 
+                                                                                  img_type=self.img_type,
+                                                                                  include_msx=self.include_msx,
+                                                                                  labels_val_path=labels_val_path, 
+                                                                                  labels_train_path=labels_train_path, 
+                                                                                  rgb_resize_shape=self.rgb_resize_shape,
+                                                                                  infrared_resize_shape=self.infrared_resize_shape
                                                                              ) 
 
         self.validation_check = len(self.dataloader_train) // 2
@@ -217,6 +220,19 @@ class Trainer:
         self.validation_epoch(-1)
         for epoch in range(self.epochs):
             print('Epoch [{}/{}]'.format(epoch, self.epochs))
+            # warm up lr
+            if epoch < 10:
+                warmup_learning_rate = self.learning_rate * (epoch + 1)/10
+                print('warmup_learning_rate', warmup_learning_rate)
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = warmup_learning_rate
+            if epoch == 10:
+                print('learning_rate', self.learning_rate)
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = self.learning_rate
+
+                
+            
             # Perform a full pass through all the training samples
             for batch_it, sample in enumerate(self.dataloader_train):
                 if self.img_type == 'ensemble':
@@ -245,6 +261,8 @@ class Trainer:
 
                 # Backpropagation
                 loss.backward()
+                
+                
 
                 # Gradient descent step
                 self.optimizer.step()
@@ -252,8 +270,9 @@ class Trainer:
                 # Reset all computed gradients to 0
                 self.optimizer.zero_grad()
                  # Compute loss/accuracy for all three datasets.
-                if batch_it % self.validation_check == 0:
+                if batch_it % self.validation_check == 0:                    
                     self.validation_epoch(epoch)
+                    #self.scheduler.step(self.VALIDATION_LOSS[-1])
                     # Check early stopping criteria.
                     if self.should_early_stop():
                         print("Early stopping.")
@@ -308,6 +327,11 @@ if __name__ == "__main__":
     parser.add_argument("--train_layer2", default=True, type=str2bool, help="should also unfreeze layer2 of ResNet")
     parser.add_argument("--rgb_resize_shape", default=1280, type=int, help="size to resize rgb crop to") 
     parser.add_argument("--infrared_resize_shape", default=160, type=int, help="size to resize infrared crop to") 
+
+    parser.add_argument("--time_stamp_rgb", default='20200225_1439', type=str, help="timestamp or rgb model to use")
+    parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use") 
+
+    
     args = parser.parse_args()
 
 
@@ -321,7 +345,9 @@ if __name__ == "__main__":
                       early_stop_count = args.early_stop_count,
                       train_layer2 = args.train_layer2,
                       rgb_resize_shape=(args.rgb_resize_shape, args.rgb_resize_shape),
-                      infrared_resize_shape=(args.infrared_resize_shape, args.infrared_resize_shape)
+                      infrared_resize_shape=(args.infrared_resize_shape, args.infrared_resize_shape),
+                      time_stamp_rgb=args.time_stamp_rgb,
+                      time_stamp_infrared=args.time_stamp_infrared,
                      )
     
 

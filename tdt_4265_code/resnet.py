@@ -59,6 +59,7 @@ class ResNetEnsembleInfraredRGB(nn.Module):
                  infrared_size=160,
                  fuse_after_layer = 3):
 
+        
         super().__init__()
         self.fuse_after_layer = fuse_after_layer
         self.rgb_size = rgb_size
@@ -118,18 +119,18 @@ class ResNetEnsembleInfraredRGB(nn.Module):
         self.infrared3 = ResNetIR.model.layer3
         self.infrared4 = ResNetIR.model.layer4
         
-        if int(rgb_size/infrared_size) == 2^3:
+        if int(rgb_size/infrared_size) == 2**3:
             self.upsample = nn.Sequential( #Double size 3 times
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
                                         )
-        elif int(rgb_size/infrared_size) == 2^2:
+        elif int(rgb_size/infrared_size) == 2**2:
             self.upsample = nn.Sequential( #Double size twice
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1)
                                         )
-        elif int(rgb_size/infrared_size) == 2^1:
+        elif int(rgb_size/infrared_size) == 2**1:
             self.upsample = nn.Sequential( #Double once
                                   nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
                                         )

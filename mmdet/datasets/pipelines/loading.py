@@ -74,6 +74,7 @@ class LoadFusionImageFromFile(object):
                             }
         results['img_shape'] = img_rgb.shape
         results['ori_shape'] = img_rgb.shape
+        
         return results
 
     def __repr__(self):

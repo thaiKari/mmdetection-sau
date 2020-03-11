@@ -188,7 +188,11 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
             bbox_assigner = build_assigner(self.train_cfg.rcnn.assigner)
             bbox_sampler = build_sampler(
                 self.train_cfg.rcnn.sampler, context=self)
-            num_imgs = img.size(0)
+            if type(img) == type({}):
+                key0 = list(img.keys())[0]
+                num_imgs = img[key0].size(0)
+            else:
+                num_imgs = img.size(0)
             if gt_bboxes_ignore is None:
                 gt_bboxes_ignore = [None for _ in range(num_imgs)]
             sampling_results = []

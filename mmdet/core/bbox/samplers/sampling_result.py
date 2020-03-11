@@ -5,6 +5,13 @@ class SamplingResult(object):
 
     def __init__(self, pos_inds, neg_inds, bboxes, gt_bboxes, assign_result,
                  gt_flags):
+        
+        #print('SAMPLING RESULT!')
+        #print('pos_inds ', pos_inds)
+        #print('neg_inds ', neg_inds)
+        #print('bboxes ', bboxes)
+        
+        
         self.pos_inds = pos_inds
         self.neg_inds = neg_inds
         self.pos_bboxes = bboxes[pos_inds]

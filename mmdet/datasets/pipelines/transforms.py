@@ -10,23 +10,6 @@ from numpy import random
 from mmdet.core.evaluation.bbox_overlaps import bbox_overlaps
 from ..registry import PIPELINES
 
-from albumentations import (
-    BboxParams,
-    HorizontalFlip,
-    VerticalFlip,
-    RandomCrop,
-    Crop,
-    Compose,
-    Rotate,
-    ReplayCompose,
-    Normalize,
-    OneOf,
-    RandomContrast,
-    RandomGamma,
-    RandomBrightness,
-    RandomSizedCrop
-)
-
 from albumentations import BboxParams as BboxParamsAlbu
 from albumentations import HorizontalFlip as HorizontalFlipAlbu
 from albumentations import VerticalFlip as VerticalFlipAlbu
@@ -49,7 +32,7 @@ class FusionAugmentations(object):
         self.test = test
 
     def get_albu_aug(self, aug, min_area=0., min_visibility=0.):
-        return ReplayCompose(aug, bbox_params=BboxParams(format='coco', min_area=min_area, 
+        return ReplayComposeAlbu(aug, bbox_params=BboxParamsAlbu(format='coco', min_area=min_area, 
                                                    min_visibility=min_visibility, label_fields=['category_id']))
 
     #Augmentations applied to both rgb and ir images
@@ -72,7 +55,7 @@ class FusionAugmentations(object):
 
     def rgb_augmentations(self, resize_shape=(1280,1280)):
         return  self.get_albu_aug([ResizeAlbu(*resize_shape ),
-                         OneOf(
+                         OneOfAlbu(
                             [
                                 # apply one of transforms to 50% of images
                                 RandomContrastAlbu(), # apply random contrast
@@ -112,7 +95,7 @@ class FusionAugmentations(object):
         
         else:
             transformed_rgb = self.common_augmentations()(**rgb_sample)
-            transformed_infrared_im = ReplayCompose.replay(transformed_rgb['replay'], image=infrared_sample['image'])['image']
+            transformed_infrared_im = ReplayComposeAlbu.replay(transformed_rgb['replay'], image=infrared_sample['image'])['image']
             transformed_infrared = transformed_rgb.copy()
             transformed_infrared['image'] = transformed_infrared_im
         
@@ -127,9 +110,9 @@ class FusionAugmentations(object):
         #results['pad_shape'] = transformed_rgb['image'].shape
         results['img_shape'] = transformed_rgb['image'].shape
         results['pad_shape'] = transformed_rgb['image'].shape  # in case that there is no padding
-        #results['scale_factor'] = 1
-        #results['keep_ratio'] = True
-        #results['flip'] = True
+        results['scale_factor'] = 1
+        results['keep_ratio'] = True
+        results['flip'] = True
         results['img_norm_cfg']=dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
         

@@ -22,6 +22,8 @@ if __name__ == "__main__":
     parser.add_argument("--rgb_resize_shape", default=1280, type=int, help="size to resize rgb crop to") 
     parser.add_argument("--infrared_resize_shape", default=160, type=int, help="size to resize infrared crop to")
     parser.add_argument("--test_dataset", default='val', type=str, help="val or train... which dataset to evalutate") 
+    parser.add_argument("--time_stamp_rgb", default='20200225_1439', type=str, help="timestamp or rgb model to use")
+    parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use") 
 
     args = parser.parse_args()
 
@@ -35,18 +37,18 @@ if __name__ == "__main__":
     time_stamp_infrared = '20200221_1432'
 
     if args.img_type == 'ensemble':    
-        model_path_rgb = root_work_dir + 'rgb/' + time_stamp_rgb +'/model_best.pth.tar'
+        model_path_rgb = root_work_dir + 'rgb/' + args.time_stamp_rgb +'/model_best.pth.tar'
         model_rgb = ResNet(image_channels=3, num_classes=9)
         model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
-        model_path_infrared = root_work_dir + 'infrared/' + time_stamp_infrared  +'/model_best.pth.tar'
+        model_path_infrared = root_work_dir + 'infrared/' + args.time_stamp_infrared  +'/model_best.pth.tar'
         model_infrared = ResNet(image_channels=3, num_classes=9)
         model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
 
 
         model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared,
-                                         rgb_size = rgb_size,
-                                         infrared_size = infrared_size)
+                                         rgb_size = args.rgb_resize_shape,
+                                         infrared_size = args.infrared_resize_shape)
 
     else:
         model = ResNet(image_channels=3, num_classes=9)
@@ -63,7 +65,10 @@ if __name__ == "__main__":
     labels_train_path = 'annotations/train2020_simple.json'
 
     if args.img_type == 'ensemble':    
-        dataloader_train, dataloader_val = load_sheep_grid_multiband(args.batch_size, test_mode=True)
+        dataloader_train, dataloader_val = load_sheep_grid_multiband(args.batch_size,
+                                                     rgb_resize_shape= (args.rgb_resize_shape,args.rgb_resize_shape),
+                                                     infrared_resize_shape=(args.infrared_resize_shape,args.infrared_resize_shape),
+                                                     test_mode=True)
     else:
         dataloader_train, dataloader_val = load_sheep_grid_data(args.batch_size,
                                     img_type=args.img_type,
