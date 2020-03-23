@@ -23,7 +23,8 @@ if __name__ == "__main__":
     parser.add_argument("--infrared_resize_shape", default=160, type=int, help="size to resize infrared crop to")
     parser.add_argument("--test_dataset", default='val', type=str, help="val or train... which dataset to evalutate") 
     parser.add_argument("--time_stamp_rgb", default='20200225_1439', type=str, help="timestamp or rgb model to use")
-    parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use") 
+    parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use")
+    parser.add_argument("--fuse_depth", default=3, type=int, help="level in network to fuse rgb and infrared (2,3,4 or 5") 
 
     args = parser.parse_args()
 
@@ -48,7 +49,8 @@ if __name__ == "__main__":
 
         model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared,
                                          rgb_size = args.rgb_resize_shape,
-                                         infrared_size = args.infrared_resize_shape)
+                                         infrared_size = args.infrared_resize_shape,
+                                         fuse_after_layer = args.fuse_depth)
 
     else:
         model = ResNet(image_channels=3, num_classes=9)

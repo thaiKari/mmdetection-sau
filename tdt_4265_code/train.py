@@ -28,7 +28,9 @@ class Trainer:
                  rgb_resize_shape,
                  infrared_resize_shape,
                  time_stamp_rgb,
-                 time_stamp_infrared
+                 time_stamp_infrared,
+                 fuse_depth,
+                 network_depth
                 ):
         """
         Initialize our trainer class.
@@ -45,6 +47,8 @@ class Trainer:
         self.which_gpu = which_gpu
         self.rgb_resize_shape = rgb_resize_shape
         self.infrared_resize_shape = infrared_resize_shape
+        self.fuse_depth=fuse_depth
+        self.network_depth = network_depth
         
         #Extra ensemble parameters
         if img_type == 'ensemble':
@@ -102,10 +106,16 @@ class Trainer:
                                            ResNetIR = model_infrared,
                                            train_layer2=train_layer2,
                                            rgb_size = self.rgb_resize_shape[0],
-                                           infrared_size = self.infrared_resize_shape[0]                                           
+                                           infrared_size = self.infrared_resize_shape[0],
+                                           fuse_after_layer= self.fuse_depth,
+                                           depth = self.network_depth
                                                   ) 
         else:            
-            self.model = ResNet(image_channels=3, num_classes=9, train_layer2=train_layer2)  
+            self.model = ResNet(image_channels=3,
+                                num_classes=9,
+                                train_layer2=train_layer2,
+                                depth = self.network_depth
+                               )  
         
         # Transfer model to GPU VRAM, if possible.
         self.model = to_cuda(self.model, self.which_gpu)
@@ -221,12 +231,12 @@ class Trainer:
         for epoch in range(self.epochs):
             print('Epoch [{}/{}]'.format(epoch, self.epochs))
             # warm up lr
-            if epoch < 10:
-                warmup_learning_rate = self.learning_rate * (epoch + 1)/10
+            if epoch < 5:
+                warmup_learning_rate = self.learning_rate * (epoch + 1)/5
                 print('warmup_learning_rate', warmup_learning_rate)
                 for pg in self.optimizer.param_groups:
                     pg['lr'] = warmup_learning_rate
-            if epoch == 10:
+            if epoch == 5:
                 print('learning_rate', self.learning_rate)
                 for pg in self.optimizer.param_groups:
                     pg['lr'] = self.learning_rate
@@ -330,6 +340,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--time_stamp_rgb", default='20200225_1439', type=str, help="timestamp or rgb model to use")
     parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use") 
+    parser.add_argument("--fuse_depth", default=3, type=int, help="level in network to fuse rgb and infrared (2,3,4 or 5")
+    parser.add_argument("--network_depth", default=18, type=int, help="resnet depth (18, 34, 50, 101, 152)") 
+    
+    
 
     
     args = parser.parse_args()
@@ -348,6 +362,8 @@ if __name__ == "__main__":
                       infrared_resize_shape=(args.infrared_resize_shape, args.infrared_resize_shape),
                       time_stamp_rgb=args.time_stamp_rgb,
                       time_stamp_infrared=args.time_stamp_infrared,
+                      fuse_depth=args.fuse_depth,
+                      network_depth=args.network_depth
                      )
     
 

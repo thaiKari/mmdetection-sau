@@ -2,12 +2,22 @@ import torchvision
 from torch import nn
 import torch
 
+layer_depths_dict = {
+    18: (64,128,256,512),
+    34: (64,128,256,512),
+    50: (256, 512, 1024, 2048),
+    101: (256, 512, 1024, 2048),
+    152: (256, 512, 1024, 2048)
+}
+
+
 class ResNet(nn.Module):
 
     def __init__(self,
-                 image_channels,
-                 num_classes,
-                train_layer2 = False):
+                 image_channels=3,
+                 num_classes=9,
+                train_layer2 = True,
+                depth = 18):
         """
             Is called when model is initialized.
             Args:
@@ -15,15 +25,26 @@ class ResNet(nn.Module):
                 num_classes: Number of classes we want to predict (10)
         """
         super().__init__()
-        self.model = torchvision.models.resnet18( pretrained = True )
+        
+        if depth == 18:
+            self.model = torchvision.models.resnet18( pretrained = True )
+        if depth == 34:
+            self.model = torchvision.models.resnet34( pretrained = True )
+        if depth == 50:
+            self.model = torchvision.models.resnet50( pretrained = True )
+        if depth == 101:
+            self.model = torchvision.models.resnet101( pretrained = True )
+        if depth == 152:
+            self.model = torchvision.models.resnet152( pretrained = True )
+        
+        layer_depths = layer_depths_dict[depth]
         
         #Change model to fit number of input channels
         if image_channels != 3:
-            self.model.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3,bias=False)
+            self.model.conv1 = nn.Conv2d(image_channels, layer_depths[0], kernel_size=7, stride=2, padding=3,bias=False)
 
         
-        
-        self.model.fc = nn.Linear( 512 , num_classes ) 
+        self.model.fc = nn.Linear( layer_depths[-1] , num_classes ) 
         
         for param in self.model.parameters(): # Freeze all parameters
             param.requires_grad = False            
@@ -57,13 +78,22 @@ class ResNetEnsembleInfraredRGB(nn.Module):
                  train_layer2 = True,
                  rgb_size=1280,
                  infrared_size=160,
-                 fuse_after_layer = 3):
+                 fuse_after_layer = 3,
+                 depth = 18):
 
         
         super().__init__()
         self.fuse_after_layer = fuse_after_layer
         self.rgb_size = rgb_size
         self.infrared_size =infrared_size
+        
+        self.layer_depths = layer_depths_dict[depth]
+        
+        if fuse_after_layer < 5:
+            self.fuse_depth = self.layer_depths[fuse_after_layer-1]
+        else:
+            self.fuse_depth = 256
+        
         
         for param in ResNetRGB.parameters(): # Freeze all parameters
             param.requires_grad = False  
@@ -119,24 +149,32 @@ class ResNetEnsembleInfraredRGB(nn.Module):
         self.infrared3 = ResNetIR.model.layer3
         self.infrared4 = ResNetIR.model.layer4
         
+        if int(rgb_size/infrared_size) == 2**4:
+            self.upsample = nn.Sequential( #Double size 4 times
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                        )
+        
         if int(rgb_size/infrared_size) == 2**3:
             self.upsample = nn.Sequential( #Double size 3 times
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
                                         )
         elif int(rgb_size/infrared_size) == 2**2:
             self.upsample = nn.Sequential( #Double size twice
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1)
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1)
                                         )
         elif int(rgb_size/infrared_size) == 2**1:
             self.upsample = nn.Sequential( #Double once
-                                  nn.ConvTranspose2d(256, 256, 3, stride=2, padding=1, output_padding=1),
+                                  nn.ConvTranspose2d(self.fuse_depth, self.fuse_depth, 3, stride=2, padding=1, output_padding=1),
                                         )
         
         #After concat of layers from infrared and rgb. do 1x1 conv layer to reduce dimensions.
-        self.dimension_reducer = nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0,bias=False)
+        self.dimension_reducer = nn.Conv2d(self.fuse_depth*2, self.fuse_depth, kernel_size=1, stride=1, padding=0,bias=False)
         
         self.model_Head_rgb = nn.Sequential(                                    
                                     ResNetRGB.model.avgpool,
@@ -199,8 +237,8 @@ class ResNetEnsembleInfraredRGB(nn.Module):
             
             return x
         
-        x_rgb = self.model_Head_rgb(x)
-        x_infrared = self.model_Head_infrared(x)
+        x_rgb = self.model_Head_rgb(x_rgb)
+        x_infrared = self.model_Head_infrared(x_infrared)
         
         x = torch.cat((x_rgb, x_infrared), dim=1)
         x = self.extra_fc(x)
