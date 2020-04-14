@@ -17,7 +17,9 @@ class ResNet(nn.Module):
                  image_channels=3,
                  num_classes=9,
                 train_layer2 = True,
-                depth = 18):
+                depth = 18,
+                X=False, # if X=True, use resNext not resNet
+                test_mode= False):
         """
             Is called when model is initialized.
             Args:
@@ -26,14 +28,26 @@ class ResNet(nn.Module):
         """
         super().__init__()
         
+        assert depth in [18, 34, 50, 101, 152], 'ResNet only available for depth 18, 34, 50, 101 and 152'
+        
+        if X:
+            assert depth in [50, 101], 'ResNext only available for depth 50 and 101'
+        
         if depth == 18:
             self.model = torchvision.models.resnet18( pretrained = True )
         if depth == 34:
             self.model = torchvision.models.resnet34( pretrained = True )
         if depth == 50:
-            self.model = torchvision.models.resnet50( pretrained = True )
+            if X:
+                self.model = torchvision.models.resnext50_32x4d( pretrained = True )
+            else:
+                self.model = torchvision.models.resnet50( pretrained = True )
+
         if depth == 101:
-            self.model = torchvision.models.resnet101( pretrained = True )
+            if X:
+                self.model = torchvision.models.resnext101_32x8d( pretrained = True )
+            else:
+                self.model = torchvision.models.resnet101( pretrained = True )
         if depth == 152:
             self.model = torchvision.models.resnet152( pretrained = True )
         
@@ -49,16 +63,17 @@ class ResNet(nn.Module):
         for param in self.model.parameters(): # Freeze all parameters
             param.requires_grad = False            
         
-        for param in self.model.fc.parameters(): # Unfreeze the last fully - connected
-            param.requires_grad = True 
-        for param in self.model.layer4.parameters(): # Unfreeze the last 5 convolutional
-            param.requires_grad = True
-        for param in self.model.layer3.parameters(): 
-            param.requires_grad = True 
-        
-        if train_layer2:
-            for param in self.model.layer2.parameters(): 
+        if not test_mode:
+            for param in self.model.fc.parameters(): # Unfreeze the last fully - connected
                 param.requires_grad = True 
+            for param in self.model.layer4.parameters(): # Unfreeze the last 5 convolutional
+                param.requires_grad = True
+            for param in self.model.layer3.parameters(): 
+                param.requires_grad = True 
+
+            if train_layer2:
+                for param in self.model.layer2.parameters(): 
+                    param.requires_grad = True 
         
         
         
@@ -79,7 +94,8 @@ class ResNetEnsembleInfraredRGB(nn.Module):
                  rgb_size=1280,
                  infrared_size=160,
                  fuse_after_layer = 3,
-                 depth = 18):
+                 depth = 18,
+                test_mode=False):
 
         
         super().__init__()
@@ -98,30 +114,33 @@ class ResNetEnsembleInfraredRGB(nn.Module):
         for param in ResNetRGB.parameters(): # Freeze all parameters
             param.requires_grad = False  
         
-        for param in ResNetRGB.model.layer4.parameters():
-            param.requires_grad = True
-        
-        for param in ResNetRGB.model.layer3.parameters():
-            param.requires_grad = True
-
-        if train_layer2:
-            for param in ResNetRGB.model.layer2.parameters(): 
+        if not test_mode:
+            for param in ResNetRGB.model.layer4.parameters():
                 param.requires_grad = True
+
+            for param in ResNetRGB.model.layer3.parameters():
+                param.requires_grad = True
+
+            if train_layer2:
+                for param in ResNetRGB.model.layer2.parameters(): 
+                    param.requires_grad = True
         
         for param in ResNetIR.parameters(): # Freeze all parameters
             param.requires_grad = False  
         
-        
-        for param in ResNetIR.model.layer3.parameters():
-            param.requires_grad = True
-            
-            
-        for param in ResNetIR.model.layer4.parameters():
-            param.requires_grad = True
-            
-        if train_layer2:
-            for param in ResNetIR.model.layer2.parameters(): 
-                param.requires_grad = True
+        if not test_mode:
+            if fuse_after_layer >= 3:
+                for param in ResNetIR.model.layer3.parameters():
+                    param.requires_grad = True
+
+
+            if fuse_after_layer >= 4:
+                for param in ResNetIR.model.layer4.parameters():
+                    param.requires_grad = True
+
+            if train_layer2:
+                for param in ResNetIR.model.layer2.parameters(): 
+                    param.requires_grad = True
 
         
         self.rgb1 = nn.Sequential(

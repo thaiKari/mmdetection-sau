@@ -9,9 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from resnet import ResNet, ResNetEnsembleInfraredRGB
 from dataloaders import  load_sheep_grid_data, load_sheep_grid_multiband
-from utils import to_cuda
+from utils import to_cuda, get_grid
 import time
 import argparse
+import json
 
 if __name__ == "__main__":
     
@@ -24,9 +25,12 @@ if __name__ == "__main__":
     parser.add_argument("--test_dataset", default='val', type=str, help="val or train... which dataset to evalutate") 
     parser.add_argument("--time_stamp_rgb", default='20200225_1439', type=str, help="timestamp or rgb model to use")
     parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use")
-    parser.add_argument("--fuse_depth", default=3, type=int, help="level in network to fuse rgb and infrared (2,3,4 or 5") 
+    parser.add_argument("--fuse_depth", default=3, type=int, help="level in network to fuse rgb and infrared (2,3,4 or 5")
+    parser.add_argument("--network_depth", default=18, type=int, help="resnet depth (18, 34, 50, 101, 152)") 
+    parser.add_argument("--distributed", default=False, type=bool, help="was distributed training")
 
     args = parser.parse_args()
+
 
     
 
@@ -39,28 +43,39 @@ if __name__ == "__main__":
 
     if args.img_type == 'ensemble':    
         model_path_rgb = root_work_dir + 'rgb/' + args.time_stamp_rgb +'/model_best.pth.tar'
-        model_rgb = ResNet(image_channels=3, num_classes=9)
+        model_rgb = ResNet(image_channels=3, num_classes=9, depth=args.network_depth, test_mode=True)
         model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
         model_path_infrared = root_work_dir + 'infrared/' + args.time_stamp_infrared  +'/model_best.pth.tar'
-        model_infrared = ResNet(image_channels=3, num_classes=9)
+        model_infrared = ResNet(image_channels=3, num_classes=9, depth=args.network_depth, test_mode=True)
         model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
 
 
         model = ResNetEnsembleInfraredRGB(num_classes=9, ResNetRGB=model_rgb, ResNetIR=model_infrared,
                                          rgb_size = args.rgb_resize_shape,
                                          infrared_size = args.infrared_resize_shape,
-                                         fuse_after_layer = args.fuse_depth)
+                                         fuse_after_layer = args.fuse_depth,
+                                         depth=args.network_depth,
+                                         test_mode=True)
 
     else:
-        model = ResNet(image_channels=3, num_classes=9)
+        model = ResNet(image_channels=3, num_classes=9, depth=args.network_depth, test_mode=True)
 
-
-    pretrained_dict = torch.load(os.path.join(work_dir, 'model_best.pth.tar'), map_location="cuda:0")['state_dict']
-    model.load_state_dict(pretrained_dict, strict=True)    
-
+  
+    
+    #if args.distributed:
+    
+    #model.to(f'cuda:{model.device_ids[0]}')
+    
+    #else:
     model.cuda()
+        
+
+    pretrained_dict = torch.load(os.path.join(work_dir, 'model_best.pth.tar'))['state_dict'] #, map_location="cuda:0"
+    model.load_state_dict(pretrained_dict, strict=False)  
+    model = nn.DataParallel(model, device_ids = [0,1])
     model = model.eval()
+
     
     # Load our dataset
     labels_val_path = 'annotations/val2020_simple.json'
@@ -99,6 +114,7 @@ if __name__ == "__main__":
     for batch_it, sample in enumerate(dataloader):    
 
         if args.img_type == 'ensemble':
+            
             X_batch_rgb = sample['rgb']
             X_batch_infrared = sample['infrared']
             Y_batch = sample['grid']
@@ -147,24 +163,33 @@ if __name__ == "__main__":
 
 
     if args.test_dataset == 'train':
-        result_filename = 'train_predictions.txt'
+        result_filename = 'train_predictions_'+ args.img_type + '_' + str(args.time_stamp)   +'.txt'
         dataset_folder = 'train2020'
     else:
-        result_filename = 'validation_predictions.txt'
+        result_filename = 'validation_predictions_'+ args.img_type + '_' + str(args.time_stamp)   +'.txt'
         dataset_folder = 'val2020'
 
     with open(os.path.join(work_dir,result_filename), "w") as file:
                 file.write("")
 
-
+    ##Load bboxes
+    if args.test_dataset =='train':
+        labels_path = labels_train_path
+    else:
+        labels_path = labels_val_path
+    
+    with open(os.path.join('./data/data_external/',labels_path),'r') as file:
+        bbox_map = json.load(file)
+    
     i=0
     for full_im_key in results_full_ims.keys():
 
         all_pred_val = [*all_pred_val, *results_full_ims[full_im_key].flatten()]
-        all_gt_val = [*all_gt_val, *gt_full_ims[full_im_key].flatten()]
+        #all_gt_val = [*all_gt_val, *gt_full_ims[full_im_key].flatten()] Old way ..
+        all_gt_val = [*all_gt_val, *get_grid(bbox_map[full_im_key], im_shape=(2400, 3200), grid_shape = (6, 8)).flatten()]
 
         with open(os.path.join(work_dir,result_filename), "a") as file:
-                file.write("{} {}\n".format(key, str(results_full_ims[full_im_key].flatten())[1:-1]))
+            file.write("{} {}\n".format(full_im_key, str(list(results_full_ims[full_im_key].flatten()))[1:-1]).replace(',','') )
 
         i = i+1
         

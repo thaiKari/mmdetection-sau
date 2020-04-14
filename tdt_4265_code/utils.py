@@ -53,8 +53,12 @@ def compute_loss_and_accuracy(dataloader, model, loss_criterion, which_gpu, ense
             Y_batch = sample['grid']
 
             # Transfer images/labels to GPU VRAM, if possible
-            X_batch = to_cuda(X_batch, which_gpu=which_gpu)
-            Y_batch = to_cuda(Y_batch, which_gpu=which_gpu)
+            if which_gpu >= 0:
+                X_batch = to_cuda(X_batch, which_gpu=which_gpu)
+                Y_batch = to_cuda(Y_batch, which_gpu=which_gpu)
+            else:
+                X_batch = to_cuda(X_batch, which_gpu=0)
+                Y_batch = to_cuda(Y_batch, which_gpu=0)
             # Forward pass the images through our model
             output_probs = model(X_batch) 
             #Size output_probs: [batch_size, n_classes]
@@ -65,10 +69,15 @@ def compute_loss_and_accuracy(dataloader, model, loss_criterion, which_gpu, ense
             X_batch_rgb = sample['rgb']
             X_batch_infrared = sample['infrared']
             Y_batch = sample['grid']
-
-            X_batch_rgb = to_cuda(X_batch_rgb, which_gpu=which_gpu)
-            X_batch_infrared = to_cuda(X_batch_infrared,which_gpu=which_gpu)
-            Y_batch = to_cuda(Y_batch, which_gpu=which_gpu)
+            
+            if which_gpu >= 0:
+                X_batch_rgb = to_cuda(X_batch_rgb, which_gpu=which_gpu)
+                X_batch_infrared = to_cuda(X_batch_infrared,which_gpu=which_gpu)
+                Y_batch = to_cuda(Y_batch, which_gpu=which_gpu)
+            else: 
+                X_batch_rgb = to_cuda(X_batch_rgb, which_gpu=0)
+                X_batch_infrared = to_cuda(X_batch_infrared,which_gpu=0)
+                Y_batch = to_cuda(Y_batch, which_gpu=0)
 
             # Perform the forward pass
             output_probs = model(X_batch_rgb, X_batch_infrared)

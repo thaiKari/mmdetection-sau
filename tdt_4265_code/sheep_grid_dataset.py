@@ -231,14 +231,14 @@ class SheepGridDatasetMultiBand(Dataset):
 
 
 
-'''
+
 
 ## TEST: READ CROPS COVERING FULL IMAGE. NO FANCY AUGMENTATION
 class SheepGridDatasetTest(Dataset):
     #img_type = rgb or infrared
     def __init__(self, labels_path, image_path, root_dir, img_type='rgb', crop_shape=(1200,1200), im_shape=(2400,3200), grid_shape=(3,3), include_msx = False):
 
-        self.labels = read_coco_annotations_test(os.path.join(root_dir,labels_path), crop_shape=crop_shape, im_shape=im_shape, grid_shape=grid_shape)
+        self.labels = read_coco_annotations(os.path.join(root_dir,labels_path))
         self.image_path = image_path
         self.root_dir = root_dir
         self.crop_shape = crop_shape
@@ -291,7 +291,7 @@ class SheepGridDatasetTest(Dataset):
         
         
         image = io.imread(img_full_path)
-        image = get_image_crop(image, key, crop_shape=self.crop_shape, im_shape=self.im_shape, grid_shape=self.grid_shape)
+        #image = get_image_crop(image, key, crop_shape=self.crop_shape, im_shape=self.im_shape, grid_shape=self.grid_shape)
         
         
         
@@ -301,10 +301,10 @@ class SheepGridDatasetTest(Dataset):
                   'category_id': [0]*len(label) }
         
         #TRANSFORMS (just resize and normalize)
-        if self.img_type == 'rgb':
-            sample = rgb_augmentations_bare_bones()(**sample)
-        elif self.img_type == 'infrared':
-            sample = infrared_augmentations()(**sample)
+        #if self.img_type == 'rgb':
+        #    sample = rgb_augmentations_bare_bones()(**sample)
+        #elif self.img_type == 'infrared':
+        #    sample = infrared_augmentations()(**sample)
             
             
         # CALCULATE GRID VALUES FROM BBOXES
@@ -324,6 +324,5 @@ class SheepGridDatasetTest(Dataset):
 
         return {'image': sample['image'],
                 'grid': sample['grid'],
-                #'bboxes': sample['bboxes'],
+                'bboxes': sample['bboxes'],
                 'key': key}
-'''

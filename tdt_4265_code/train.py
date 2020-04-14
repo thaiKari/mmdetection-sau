@@ -30,7 +30,9 @@ class Trainer:
                  time_stamp_rgb,
                  time_stamp_infrared,
                  fuse_depth,
-                 network_depth
+                 network_depth,
+                 warmup,
+                 optimiser
                 ):
         """
         Initialize our trainer class.
@@ -49,17 +51,19 @@ class Trainer:
         self.infrared_resize_shape = infrared_resize_shape
         self.fuse_depth=fuse_depth
         self.network_depth = network_depth
+        self.warmup = warmup
+        self.which_optimiser = optimiser
         
         #Extra ensemble parameters
         if img_type == 'ensemble':
             state_file_rgb = '/model_best.pth.tar'
             model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
-            model_rgb = ResNet(image_channels=3, num_classes=9)
+            model_rgb = ResNet(image_channels=3, num_classes=9, depth = network_depth)
             model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
             state_file_infrared = '/model_best.pth.tar'
             model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
-            model_infrared = ResNet(image_channels=3, num_classes=9)
+            model_infrared = ResNet(image_channels=3, num_classes=9, depth = network_depth)
             model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
         
         
@@ -83,6 +87,9 @@ class Trainer:
             s = s + "which_gpu  = " + str(which_gpu) + "\n"
             s = s + "rgb_resize_shape  = " + str(rgb_resize_shape) + "\n"
             s = s + "infrared_resize_shape  = " + str(infrared_resize_shape) + "\n"
+            s = s + "network_depth  = " + str(network_depth) + "\n"
+            s = s + "optimiser  = " + str(optimiser) + "\n"
+            s = s + "fuse_depth  = " + str(self.fuse_depth) +"\n" 
                       
             
             if self.img_type == 'ensemble':
@@ -117,17 +124,36 @@ class Trainer:
                                 depth = self.network_depth
                                )  
         
-        # Transfer model to GPU VRAM, if possible.
-        self.model = to_cuda(self.model, self.which_gpu)
-        self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                         self.learning_rate)
+
+
         #self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min')
         
-        if start_from:
-            self.model.load_state_dict(torch.load(start_from)['state_dict'])
-            self.optimizer.load_state_dict(torch.load(start_from)['optimizer_state_dict'])
-            
+        if self.which_optimiser == 'sgd':
+            self.optimizer = torch.optim.SGD(self.model.parameters(),
+                                             self.learning_rate,
+                                             momentum=0.9,
+                                            nesterov=True)
+        else:
+            self.optimizer = torch.optim.Adam(self.model.parameters(),
+                                         self.learning_rate)
         
+        
+        if start_from:
+            self.model.load_state_dict(torch.load(start_from)['state_dict'], strict=False)
+
+            
+                # Transfer model to GPU VRAM, if possible.
+        if self.which_gpu >= 0:
+            self.model = to_cuda(self.model, self.which_gpu)
+        else:
+            self.model = nn.DataParallel(self.model, device_ids = [0,1])
+            self.model.to(f'cuda:{self.model.device_ids[0]}')
+        
+        if start_from:
+            try:
+                self.optimizer.load_state_dict(torch.load(start_from)['optimizer_state_dict'])
+            except:
+                print('problem loading optimiser state dict')
         
         # Load our dataset
         labels_val_path = 'annotations/val2020_simple.json'
@@ -187,9 +213,13 @@ class Trainer:
         
         
         if epoch >= 0:
+            if self.which_gpu < 0:
+                state_dict = self.model.module.state_dict()
+            else:
+                state_dict = self.model.state_dict()
             save_checkpoint({
                 'epoch': epoch + 1,
-                'state_dict': self.model.state_dict(),
+                'state_dict': state_dict,
                 'optimizer_state_dict': self.optimizer.state_dict(),
             }, is_best, checkpoint_path = self.checkpoint_path, filename=os.path.join(self.checkpoint_path, 'epoch_'+str(epoch + 1) +'.pth.tar') )
             
@@ -231,15 +261,16 @@ class Trainer:
         for epoch in range(self.epochs):
             print('Epoch [{}/{}]'.format(epoch, self.epochs))
             # warm up lr
-            if epoch < 5:
-                warmup_learning_rate = self.learning_rate * (epoch + 1)/5
-                print('warmup_learning_rate', warmup_learning_rate)
-                for pg in self.optimizer.param_groups:
-                    pg['lr'] = warmup_learning_rate
-            if epoch == 5:
-                print('learning_rate', self.learning_rate)
-                for pg in self.optimizer.param_groups:
-                    pg['lr'] = self.learning_rate
+            if self.warmup:
+                if epoch < 5:
+                    warmup_learning_rate = self.learning_rate * (epoch + 1)/5
+                    print('warmup_learning_rate', warmup_learning_rate)
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = warmup_learning_rate
+                if epoch == 5:
+                    print('learning_rate', self.learning_rate)
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = self.learning_rate
 
                 
             
@@ -249,19 +280,28 @@ class Trainer:
                     X_batch_rgb = sample['rgb']
                     X_batch_infrared = sample['infrared']
                     Y_batch = sample['grid']
-
-                    X_batch_rgb = to_cuda(X_batch_rgb, self.which_gpu)
-                    X_batch_infrared = to_cuda(X_batch_infrared, self.which_gpu)
-                    Y_batch = to_cuda(Y_batch, self.which_gpu)
+                    
+                    if self.which_gpu >= 0:
+                        X_batch_rgb = to_cuda(X_batch_rgb, self.which_gpu)
+                        X_batch_infrared = to_cuda(X_batch_infrared, self.which_gpu)
+                        Y_batch = to_cuda(Y_batch, self.which_gpu)
+                    else:
+                        X_batch_rgb = to_cuda(X_batch_rgb, 0)
+                        X_batch_infrared = to_cuda(X_batch_infrared, 0)
+                        Y_batch = to_cuda(Y_batch, 0)
 
                     # Perform the forward pass
                     predictions = self.model(X_batch_rgb, X_batch_infrared)
                 else:
                     X_batch = sample['image']
                     Y_batch = sample['grid']
-
-                    X_batch = to_cuda(X_batch, self.which_gpu)
-                    Y_batch = to_cuda(Y_batch, self.which_gpu)
+                    
+                    if self.which_gpu >= 0:
+                        X_batch = to_cuda(X_batch, self.which_gpu)
+                        Y_batch = to_cuda(Y_batch, self.which_gpu)
+                    else:
+                        X_batch = to_cuda(X_batch, 0)
+                        Y_batch = to_cuda(Y_batch, 0)
 
                     predictions = self.model(X_batch)
                 
@@ -326,7 +366,7 @@ def str2bool(v):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpu", default=0, type=int, help="Which gpu to run training on")
+    parser.add_argument("--gpu", default=0, type=int, help="Which gpu to run training on, -1 for both")
     parser.add_argument("--img_type", default='rgb', type=str, help="rgb or infrared")
     parser.add_argument("--batch_size", default=12, type=int, help="number of images in a batch")
     parser.add_argument("--learning_rate", default='5e-5', type=str, help="the learning rate")
@@ -342,6 +382,9 @@ if __name__ == "__main__":
     parser.add_argument("--time_stamp_infrared", default='20200221_1432', type=str, help="timestamp or infrared model to use") 
     parser.add_argument("--fuse_depth", default=3, type=int, help="level in network to fuse rgb and infrared (2,3,4 or 5")
     parser.add_argument("--network_depth", default=18, type=int, help="resnet depth (18, 34, 50, 101, 152)") 
+    parser.add_argument("--warmup", default=True, type=str2bool, help="should warm up lr")
+    parser.add_argument("--optimiser", default='Adam', type=str, help="Adam or sgd") 
+
     
     
 
@@ -363,7 +406,9 @@ if __name__ == "__main__":
                       time_stamp_rgb=args.time_stamp_rgb,
                       time_stamp_infrared=args.time_stamp_infrared,
                       fuse_depth=args.fuse_depth,
-                      network_depth=args.network_depth
+                      network_depth=args.network_depth,
+                      warmup=args.warmup,
+                      optimiser=args.optimiser
                      )
     
 
