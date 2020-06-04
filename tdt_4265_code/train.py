@@ -32,7 +32,8 @@ class Trainer:
                  fuse_depth,
                  network_depth,
                  warmup,
-                 optimiser
+                 optimiser,
+                 X
                 ):
         """
         Initialize our trainer class.
@@ -53,17 +54,18 @@ class Trainer:
         self.network_depth = network_depth
         self.warmup = warmup
         self.which_optimiser = optimiser
+        self.X = X
         
         #Extra ensemble parameters
         if img_type == 'ensemble':
             state_file_rgb = '/model_best.pth.tar'
             model_path_rgb = './Work_dirs/work_dirs_external/rgb/' + time_stamp_rgb + state_file_rgb
-            model_rgb = ResNet(image_channels=3, num_classes=9, depth = network_depth)
+            model_rgb = ResNet(image_channels=3, num_classes=9, depth = network_depth, X=self.X)
             model_rgb.load_state_dict(torch.load(model_path_rgb)['state_dict'])
 
             state_file_infrared = '/model_best.pth.tar'
             model_path_infrared = './Work_dirs/work_dirs_external/infrared/' + time_stamp_infrared  + state_file_infrared
-            model_infrared = ResNet(image_channels=3, num_classes=9, depth = network_depth)
+            model_infrared = ResNet(image_channels=3, num_classes=9, depth = network_depth, X=self.X)
             model_infrared.load_state_dict(torch.load(model_path_infrared)['state_dict'])
         
         
@@ -90,6 +92,7 @@ class Trainer:
             s = s + "network_depth  = " + str(network_depth) + "\n"
             s = s + "optimiser  = " + str(optimiser) + "\n"
             s = s + "fuse_depth  = " + str(self.fuse_depth) +"\n" 
+            s = s + "X  = " + str(self.X) +"\n" 
                       
             
             if self.img_type == 'ensemble':
@@ -121,7 +124,8 @@ class Trainer:
             self.model = ResNet(image_channels=3,
                                 num_classes=9,
                                 train_layer2=train_layer2,
-                                depth = self.network_depth
+                                depth = self.network_depth,
+                                X=self.X
                                )  
         
 
@@ -384,6 +388,7 @@ if __name__ == "__main__":
     parser.add_argument("--network_depth", default=18, type=int, help="resnet depth (18, 34, 50, 101, 152)") 
     parser.add_argument("--warmup", default=True, type=str2bool, help="should warm up lr")
     parser.add_argument("--optimiser", default='Adam', type=str, help="Adam or sgd") 
+    parser.add_argument("--X", default=False, type=str2bool, help="True if should use ResNeXt instead of ResNet") 
 
     
     
@@ -408,7 +413,8 @@ if __name__ == "__main__":
                       fuse_depth=args.fuse_depth,
                       network_depth=args.network_depth,
                       warmup=args.warmup,
-                      optimiser=args.optimiser
+                      optimiser=args.optimiser,
+                      X=args.X
                      )
     
 

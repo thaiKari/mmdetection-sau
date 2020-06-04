@@ -189,8 +189,6 @@ class SheepGridDatasetMultiBand(Dataset):
         if self.test_mode:
             image_rgb = get_image_crop(image_rgb, key, crop_shape=self.crop_shape, im_shape=self.im_shape, grid_shape=self.grid_shape)
             image_infrared = get_image_crop(image_infrared, key, crop_shape=self.crop_shape, im_shape=self.im_shape, grid_shape=self.grid_shape)
-
-        
         
         sample = {'rgb': {'image': image_rgb,
                          'bboxes': label,
@@ -202,8 +200,11 @@ class SheepGridDatasetMultiBand(Dataset):
                   'category_id': [0]*len(label),
                   'key': key}
 
+        
+        
         # TRANSFORMS
         if  self.test_mode:
+            
             transformed_rgb = rgb_augmentations_bare_bones(resize_shape=self.rgb_resize_shape)(**sample['rgb'])   
             transformed_infrared = infrared_augmentations(resize_shape=self.infrared_resize_shape)(**sample['infrared'])
             
